@@ -1,7 +1,7 @@
 .gradle/
-build/
+/build/
 run/
 work/
 .test-venv/
-**/build/
+/testing/build/
 *.log
