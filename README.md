@@ -2,7 +2,7 @@
 
 A Minecraft 1.20.1 Fabric addon for Create and Create: New Age: build an electrical industry, upgrade ordinary trains into wheeled high-speed trains, then build a dedicated magnetic-levitation railway.
 
-This extends Create's actual train system. You still build the carriage body, assemble it at a station, and use Create's controls, schedules, and railway graph. The addon supplies propulsion bogeys, guideways, manufacturing parts, and electrical traction—not a separate vehicle system or a prebuilt train body.
+This extends Create's actual train system. You still build the carriage body, assemble it at a station, and use Create's controls, schedules, and railway graph. The addon supplies propulsion bogeys, guideways, manufacturing parts, and electrical traction. It is not a separate vehicle system or a prebuilt train body.
 
 ## License and attribution
 
@@ -75,7 +75,7 @@ The route preview looks ahead for curves, unsupported track, missing supply, and
 
 A real maglev needs three jobs: **levitation**, **guidance**, and **propulsion**. Magnets provide lift and guidance; a changing magnetic field can act as a linear motor along the railway. Most real bullet trains still use wheels, which is why wheeled high-speed rail is a separate stage here.
 
-Here, Create's graph provides guidance, New Age provides finite electrical energy, and the maglev running gear provides a readable **0.25-block hover**. The energy curve and clearance are gameplay choices, not a calibrated simulation of a particular real-world magnet, air gap, or aerodynamic power requirement. Longer, faster lines need infrastructure—not just a faster-looking carriage.
+Here, Create's graph provides guidance, New Age provides finite electrical energy, and the maglev running gear provides a readable **0.25-block hover**. The energy curve and clearance are gameplay choices, not a calibrated simulation of a particular real-world magnet, air gap, or aerodynamic power requirement. Longer, faster lines need infrastructure, not just a faster-looking carriage.
 
 ## Build
 
@@ -136,13 +136,13 @@ The recording report checks encoding and native gameplay outcomes; encoded-video
 
 ## Changelog
 
-### 1.0.1 — Rider and restart hardening
+### 1.0.1: Rider and restart hardening
 
 - Fixed a dedicated-server reload deadlock caused by querying neighboring redstone from the substation block-entity load callback while its chunk was still being promoted. Persisted breaker state and normal neighbor updates remain authoritative; live supply checks still enforce redstone isolation.
 - Added a recorded native seated-passenger regression covering lift, real manual driving, power-loss braking, landing, and rider retention.
 - Added an isolated two-JVM disk save/reload/resume regression with exact retained-charge and native railway-state checks.
 
-### 1.0.0 — Minecraft 1.20.1 Fabric
+### 1.0.0: Minecraft 1.20.1 Fabric
 
 - Added electric, wheeled bullet, and dedicated-guideway maglev bogeys, track materials, and manufacturing progression.
 - Added New Age/ESL substations with finite storage, loaded-range supply, redstone isolation, and transactional energy use.

@@ -523,7 +523,7 @@ soundCategory_master:0.0
                 if next_case >= len(CASES) or scene["case"] != CASES[next_case]:
                     expected = CASES[next_case] if next_case < len(CASES) else "no further scene"
                     raise AssertionError(f"Unexpected scene order: got {scene['case']}, expected {expected}")
-                print(f"RECORDING {scene['case']} — {scene['label']}: {scene['description']}", flush=True)
+                print(f"RECORDING {scene['case']}: {scene['label']}: {scene['description']}", flush=True)
                 capture = Capture(output / f"{scene['case']}.mp4", scene["case"], scene["label"])
                 active_scene = scene
                 active_result = None

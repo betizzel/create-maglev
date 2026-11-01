@@ -487,13 +487,13 @@ public final class MaglevTestMod implements ModInitializer {
 
         private static String label(String id) {
             return switch (id) {
-                case "stock-control" -> "Stock Create bogey — native scheduled control";
-                case "electric-powered" -> "Electric tier — powered native manual controls";
-                case "bullet-powered" -> "Bullet tier — reinforced native scheduled route";
-                case "maglev-powered" -> "Maglev tier — powered dedicated guideway";
-                case "maglev-unpowered" -> "Maglev tier — unpowered keyboard drive attempt";
-                case "maglev-loss" -> "Maglev tier — traction breaker loss, gradual braking, and landing";
-                case "maglev-rider" -> "Maglev tier — rider rise, braking, and landing";
+                case "stock-control" -> "Stock Create bogey: native scheduled control";
+                case "electric-powered" -> "Electric tier: powered native manual controls";
+                case "bullet-powered" -> "Bullet tier: reinforced native scheduled route";
+                case "maglev-powered" -> "Maglev tier: powered dedicated guideway";
+                case "maglev-unpowered" -> "Maglev tier: unpowered keyboard drive attempt";
+                case "maglev-loss" -> "Maglev tier: traction breaker loss, gradual braking, and landing";
+                case "maglev-rider" -> "Maglev tier: rider rise, braking, and landing";
                 default -> id;
             };
         }
