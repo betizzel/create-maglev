@@ -84,7 +84,7 @@ tasks.register('correctCreateFixtures', JavaExec) {
     group = 'verification'
     description = 'Creates test-mod-only overrides for the two documented Forge-era Create GameTest structures; Create classes/assertions and production JARs remain unchanged.'
     dependsOn rootProject.tasks.named('packageRuntime'), tasks.named('compileFixtureToolsJava')
-    inputs.files(providers.provider { packagedEntries.get().collect { it.file } })
+    inputs.dir(productionPack)
     inputs.property('sourceCreateVersion', rootProject.create_version)
     outputs.dir(correctedFixtures)
     classpath = sourceSets.fixtureTools.runtimeClasspath
@@ -102,7 +102,7 @@ sourceSets.main.resources.srcDir(correctedFixtures)
 tasks.named('processResources') { dependsOn tasks.named('correctCreateFixtures') }
 tasks.named('sourcesJar') { dependsOn tasks.named('correctCreateFixtures') }
 
-def packagedMods = files(providers.provider { packagedEntries.get().collect { it.file } })
+def packagedMods = fileTree(productionPack.map { it.dir('mods') }) { include '*.jar' }
 
 tasks.register('prepareTestRuntime') {
     group = 'verification'
@@ -118,6 +118,9 @@ tasks.register('prepareTestRuntime') {
         def (directory, manifest, manifestFile) = readPack()
         def entries = packagedEntries.get()
         requirePackIds(entries)
+        if ((packagedMods.files.collect { it.canonicalFile } as Set) != (entries.collect { it.file } as Set)) {
+            throw new GradleException('Production mod directory does not match the manifest.')
+        }
         File helper = tasks.named('remapJar').get().archiveFile.get().asFile
         String helperId = modId(helper)
         if (helperId != 'create_maglev_tests') throw new GradleException("Unexpected test-helper mod id '${helperId}'.")
