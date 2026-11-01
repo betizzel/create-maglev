@@ -1,0 +1,25 @@
+{
+  "textures": {
+    "shell": "create_maglev:block/traction_substation",
+    "panel": "create_maglev:block/traction_substation_panel",
+    "particle": "create_maglev:block/traction_substation"
+  },
+  "elements": [
+    {
+      "from": [0, 0, 0], "to": [16, 12, 16],
+      "faces": {
+        "north": {"texture": "#shell"}, "south": {"texture": "#shell"},
+        "east": {"texture": "#shell"}, "west": {"texture": "#shell"},
+        "up": {"texture": "#shell"}, "down": {"texture": "#shell"}
+      }
+    },
+    {
+      "from": [2, 12, 2], "to": [14, 16, 14],
+      "faces": {
+        "north": {"texture": "#panel"}, "south": {"texture": "#shell"},
+        "east": {"texture": "#shell"}, "west": {"texture": "#shell"},
+        "up": {"texture": "#shell"}, "down": {"texture": "#shell"}
+      }
+    }
+  ]
+}

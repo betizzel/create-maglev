@@ -1,0 +1,281 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import java.util.zip.ZipFile
+import net.fabricmc.loom.task.prod.ServerProductionRunTask
+
+base { archivesName = 'create-maglev-test-harness' }
+
+configurations {
+    gameTestRuntime { transitive = false }
+}
+
+sourceSets {
+    fixtureTools {
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.compileClasspath
+    }
+}
+
+configurations.fixtureToolsImplementation.extendsFrom(configurations.implementation)
+
+ dependencies {
+    implementation project(path: ':', configuration: 'namedElements')
+    modCompileOnly 'net.fabricmc.fabric-api:fabric-gametest-api-v1:1.2.15+1802ada577'
+    modCompileOnly("maven.modrinth:create-new-age:${rootProject.new_age_version}") { transitive = false }
+    modCompileOnly('org.antarcticgardens.esl:esl-fabric-1.20.1:1.1.3+fabric-mc1.20.1') { transitive = false }
+    gameTestRuntime 'net.fabricmc.fabric-api:fabric-gametest-api-v1:1.2.15+1802ada577'
+}
+
+def productionPack = rootProject.layout.buildDirectory.dir('production-pack')
+def runtimeDescription = layout.buildDirectory.file('test-runtime.json')
+def correctedFixtures = layout.buildDirectory.dir('generated/create-fixture-overrides')
+def gameTestApi = configurations.gameTestRuntime
+
+def readPack = {
+    File directory = productionPack.get().asFile
+    File manifestFile = new File(directory, 'manifest.json')
+    if (!manifestFile.isFile()) {
+        throw new GradleException('The production pack is missing; root :packageRuntime must create build/production-pack first.')
+    }
+    def manifest = new JsonSlurper().parse(manifestFile)
+    if (manifest.runtime.minecraft != '1.20.1' || manifest.runtime.loader != 'fabric'
+            || manifest.runtime.loaderVersion != rootProject.fabric_loader_version) {
+        throw new GradleException("Expected Fabric Minecraft 1.20.1 / loader ${rootProject.fabric_loader_version} in the production manifest.")
+    }
+    return [directory, manifest, manifestFile]
+}
+
+def modId = { File jar ->
+    try (ZipFile zip = new ZipFile(jar)) {
+        def entry = zip.getEntry('fabric.mod.json')
+        if (entry == null) throw new GradleException("${jar.name} has no fabric.mod.json")
+        return new JsonSlurper().parse(zip.getInputStream(entry)).id as String
+    }
+}
+
+def packagedEntries = providers.provider {
+    def (directory, manifest, manifestFile) = readPack()
+    manifest.mods.collect { entry ->
+        String relative = entry.file as String
+        File file = new File(directory, relative).canonicalFile
+        if (!file.toPath().startsWith(directory.canonicalFile.toPath())) {
+            throw new GradleException("Production manifest path escapes its pack: ${relative}")
+        }
+        if (!file.isFile()) throw new GradleException("Missing production mod: ${relative}")
+        long bytes = file.length()
+        String sha256 = MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString()
+        if (bytes != (entry.bytes as long) || sha256 != (entry.sha256 as String)) {
+            throw new GradleException("Production mod does not match manifest bytes/hash: ${relative}")
+        }
+        [entry: entry, file: file, id: modId(file), bytes: bytes, sha256: sha256]
+    }
+}
+
+def requirePackIds = { entries ->
+    def ids = entries.collect { it.id } as Set
+    ['create', 'create_new_age', 'fabric-api', 'forgeconfigapiport', 'create_maglev'].each { id ->
+        if (!ids.contains(id)) throw new GradleException("Production pack is missing required mod '${id}'.")
+    }
+    if (ids.contains('create_maglev_tests')) throw new GradleException('The test helper must never be a production mod.')
+}
+
+tasks.register('correctCreateFixtures', JavaExec) {
+    group = 'verification'
+    description = 'Creates test-mod-only overrides for the two documented Forge-era Create GameTest structures; Create classes/assertions and production JARs remain unchanged.'
+    dependsOn rootProject.tasks.named('packageRuntime'), tasks.named('compileFixtureToolsJava')
+    inputs.files(providers.provider { packagedEntries.get().collect { it.file } })
+    inputs.property('sourceCreateVersion', rootProject.create_version)
+    outputs.dir(correctedFixtures)
+    classpath = sourceSets.fixtureTools.runtimeClasspath
+    mainClass.set('dev.createmaglev.testing.build.FixCreateFixtures')
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) })
+    doFirst {
+        def createMod = packagedEntries.get().find { it.id == 'create' }
+        if (createMod == null) throw new GradleException('The production pack has no Create JAR.')
+        correctedFixtures.get().asFile.mkdirs()
+        setArgs([createMod.file.absolutePath, correctedFixtures.get().asFile.absolutePath, rootProject.create_version])
+    }
+}
+
+sourceSets.main.resources.srcDir(correctedFixtures)
+tasks.named('processResources') { dependsOn tasks.named('correctCreateFixtures') }
+tasks.named('sourcesJar') { dependsOn tasks.named('correctCreateFixtures') }
+
+def packagedMods = files(providers.provider { packagedEntries.get().collect { it.file } })
+
+tasks.register('prepareTestRuntime') {
+    group = 'verification'
+    description = 'Verifies every production-pack JAR against manifest bytes and SHA-256, then records isolated test inputs.'
+    dependsOn rootProject.tasks.named('packageRuntime'), tasks.named('correctCreateFixtures'), tasks.named('remapJar')
+    inputs.files(packagedMods)
+    inputs.file(new File(productionPack.get().asFile, 'manifest.json'))
+    inputs.dir(correctedFixtures)
+    inputs.file(tasks.named('remapJar').flatMap { it.archiveFile })
+    inputs.files(gameTestApi)
+    outputs.file(runtimeDescription)
+    doLast {
+        def (directory, manifest, manifestFile) = readPack()
+        def entries = packagedEntries.get()
+        requirePackIds(entries)
+        File helper = tasks.named('remapJar').get().archiveFile.get().asFile
+        String helperId = modId(helper)
+        if (helperId != 'create_maglev_tests') throw new GradleException("Unexpected test-helper mod id '${helperId}'.")
+        List<Map> overrideInputs = []
+        correctedFixtures.get().asFile.eachFileRecurse { File file ->
+            if (file.isFile()) {
+                overrideInputs.add([file: correctedFixtures.get().asFile.toPath().relativize(file.toPath()).toString().replace('\\', '/'),
+                                    bytes: file.length(), sha256: MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString()])
+            }
+        }
+        if (overrideInputs.size() != 2) throw new GradleException("Expected exactly two Create fixture overrides, found ${overrideInputs.size()}.")
+        File output = runtimeDescription.get().asFile
+        output.parentFile.mkdirs()
+        List<Map> auditedMods = entries.collect { [id: it.id, file: it.file.absolutePath, bytes: it.bytes, sha256: it.sha256] }
+        output.text = JsonOutput.prettyPrint(JsonOutput.toJson([
+            minecraft: manifest.runtime.minecraft,
+            loader: manifest.runtime.loaderVersion,
+            mods: auditedMods.collect { it.file },
+            productionManifest: manifestFile.absolutePath,
+            testMod: helper.absolutePath,
+            gameTestApi: gameTestApi.singleFile.absolutePath,
+            inputHashes: auditedMods + [[id: helperId, file: helper.absolutePath, bytes: helper.length(), sha256: MessageDigest.getInstance('SHA-256').digest(helper.bytes).encodeHex().toString()],
+                                        [id: 'fabric-gametest-api-v1', file: gameTestApi.singleFile.absolutePath, bytes: gameTestApi.singleFile.length(), sha256: MessageDigest.getInstance('SHA-256').digest(gameTestApi.singleFile.bytes).encodeHex().toString()]],
+            fixtureOverrides: overrideInputs.sort { it.file },
+            seedHook: 'BeforeBatch(defaultBatch): Create.RANDOM.setSeed(0L); native recipe outputs/weights and assertions unchanged.'
+        ])) + '\n'
+    }
+}
+
+def requireEula = {
+    if (providers.gradleProperty('testEula').orElse('false').get() != 'true') {
+        throw new GradleException('Disposable Minecraft test worlds require explicit EULA agreement: -PtestEula=true')
+    }
+}
+
+def prepareServer = { File directory ->
+    requireEula()
+    // This path is always inside testing/build; no launcher/user world is ever selected.
+    delete directory
+    directory.mkdirs()
+    new File(directory, 'eula.txt').text = 'eula=true\n'
+    new File(directory, 'server.properties').text = '''server-ip=127.0.0.1
+online-mode=false
+enforce-secure-profile=false
+spawn-protection=0
+max-players=1
+view-distance=5
+simulation-distance=5
+difficulty=normal
+gamemode=creative
+level-type=minecraft:flat
+generator-settings={"biome":"minecraft:plains","layers":[{"height":1,"block":"minecraft:bedrock"},{"height":2,"block":"minecraft:dirt"},{"height":1,"block":"minecraft:grass_block"}],"structure_overrides":[]}
+generate-structures=false
+level-seed=21102026
+allow-flight=true
+''' + "server-port=${providers.gradleProperty('testPort').orElse('25771').get()}\n"
+}
+
+def configureProduction = { ServerProductionRunTask task ->
+    task.group = 'verification'
+    task.dependsOn tasks.named('prepareTestRuntime')
+    task.minecraftVersion.set(rootProject.minecraft_version)
+    task.loaderVersion.set(rootProject.fabric_loader_version)
+    task.installerVersion.set('1.0.3')
+    task.javaLauncher.set(javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) })
+    task.mods.from(packagedMods, tasks.named('remapJar').flatMap { it.archiveFile }, gameTestApi)
+    task.jvmArgs.addAll('-Xms512M', '-Xmx4G', '-Dcreatemaglev.tests=true')
+    task.programArgs.add('nogui')
+}
+
+tasks.register('runServerGameTests', ServerProductionRunTask) {
+    configureProduction(delegate)
+    description = 'Runs unfiltered native Fabric GameTests against manifest-verified production JARs in a disposable server.'
+    runDir.set(layout.buildDirectory.dir('run/gametests'))
+    jvmArgs.addAll('-Dfabric-api.gametest', "-Dfabric-api.gametest.report-file=${layout.buildDirectory.file('reports/server-gametests.xml').get().asFile.absolutePath}")
+    doFirst {
+        layout.buildDirectory.dir('reports').get().asFile.mkdirs()
+        prepareServer(runDir.get().asFile)
+    }
+}
+
+tasks.register('runRecordedServer', ServerProductionRunTask) {
+    configureProduction(delegate)
+    description = 'Runs the isolated dedicated server driven by testing/record_tests.py over loopback only.'
+    runDir.set(layout.buildDirectory.dir('run/recorded-server'))
+    jvmArgs.addAll('-Dcreatemaglev.tests.recorded=true',
+            "-Dcreatemaglev.tests.results=${layout.buildDirectory.file('reports/recorded-results.json').get().asFile.absolutePath}",
+            "-Dcreatemaglev.tests.controlDir=${layout.buildDirectory.dir('recording-control').get().asFile.absolutePath}")
+    doFirst { prepareServer(runDir.get().asFile) }
+}
+
+def restartDirectory = layout.buildDirectory.dir('run/restart-server')
+def restartReports = layout.buildDirectory.dir('reports/restart')
+def restartCheckpoint = layout.buildDirectory.file('reports/restart/checkpoint.json')
+
+def configureRestart = { ServerProductionRunTask task, String phase ->
+    configureProduction(task)
+    task.runDir.set(restartDirectory)
+    task.timeout.set(java.time.Duration.ofMinutes(5))
+    File result = layout.buildDirectory.file("reports/restart/${phase}.json").get().asFile
+    task.jvmArgs.addAll("-Dcreatemaglev.tests.restartPhase=${phase}",
+            "-Dcreatemaglev.tests.restartCheckpoint=${restartCheckpoint.get().asFile.absolutePath}",
+            "-Dcreatemaglev.tests.restartResult=${result.absolutePath}")
+    task.doLast {
+        if (!result.isFile()) throw new GradleException("Restart ${phase} server did not write ${result}.")
+        def report = new JsonSlurper().parse(result)
+        if (report.phase != phase || report.passed != true) {
+            throw new GradleException("Native restart ${phase} failed: ${JsonOutput.toJson(report)}")
+        }
+    }
+}
+
+tasks.register('runRestartPrepare', ServerProductionRunTask) {
+    configureRestart(delegate, 'prepare')
+    description = 'Creates a genuine powered maglev and saves its owned world for a separate-JVM restart regression.'
+    doFirst {
+        prepareServer(runDir.get().asFile)
+        restartReports.get().asFile.mkdirs()
+        delete restartCheckpoint.get().asFile,
+                new File(restartReports.get().asFile, 'prepare.json'),
+                new File(restartReports.get().asFile, 'verify.json')
+    }
+}
+
+tasks.register('runRestartVerify', ServerProductionRunTask) {
+    configureRestart(delegate, 'verify')
+    description = 'Reopens the saved restart world without rebuilding its train or electrical fixture.'
+    mustRunAfter tasks.named('runRestartPrepare')
+    doFirst {
+        requireEula()
+        if (!restartCheckpoint.get().asFile.isFile()
+                || !new File(runDir.get().asFile, 'world/level.dat').isFile()) {
+            throw new GradleException('Run :testing:runRestartPrepare first; verification requires its actual saved world and checkpoint.')
+        }
+        delete new File(restartReports.get().asFile, 'verify.json')
+    }
+}
+
+
+tasks.register('runCreateBaselineGameTests', ServerProductionRunTask) {
+    group = 'verification'
+    description = 'Runs bundled Create GameTests using only the unmodified, manifest-verified production Create JAR and baseline runtime dependencies; no helper/fixture override is loaded.'
+    dependsOn rootProject.tasks.named('packageRuntime')
+    minecraftVersion.set(rootProject.minecraft_version)
+    loaderVersion.set(rootProject.fabric_loader_version)
+    installerVersion.set('1.0.3')
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) })
+    mods.setFrom(files(providers.provider {
+        def entries = packagedEntries.get()
+        requirePackIds(entries)
+        entries.findAll { it.id in ['create', 'fabric-api', 'forgeconfigapiport'] }.collect { it.file }
+    }), gameTestApi)
+    jvmArgs.addAll('-Xms512M', '-Xmx4G', '-Dfabric-api.gametest',
+            "-Dfabric-api.gametest.report-file=${layout.buildDirectory.file('reports/create-baseline-gametests.xml').get().asFile.absolutePath}")
+    programArgs.add('nogui')
+    runDir.set(layout.buildDirectory.dir('run/create-baseline'))
+    doFirst {
+        layout.buildDirectory.dir('reports').get().asFile.mkdirs()
+        prepareServer(runDir.get().asFile)
+    }
+}

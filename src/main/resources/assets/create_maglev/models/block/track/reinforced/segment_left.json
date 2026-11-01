@@ -1,0 +1,9 @@
+{
+  "parent": "create:block/track/segment_left",
+  "textures": {
+    "0": "create_maglev:block/reinforced_track",
+    "1": "create_maglev:block/reinforced_track",
+    "2": "create_maglev:block/reinforced_track_mip",
+    "particle": "create_maglev:block/reinforced_track"
+  }
+}

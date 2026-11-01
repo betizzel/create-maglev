@@ -1,0 +1,10 @@
+{
+  "type": "create_new_age:energising",
+  "energy_needed": 4096,
+  "ingredients": [
+    {"item": "create_maglev:unenergized_levitation_module"}
+  ],
+  "results": [
+    {"item": "create_maglev:levitation_module"}
+  ]
+}

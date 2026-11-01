@@ -1,0 +1,10 @@
+{
+  "parent": "create:block/track/diag",
+  "textures": {
+    "0": "create_maglev:block/reinforced_track",
+    "1": "create_maglev:block/reinforced_track",
+    "2": "create_maglev:block/reinforced_track_mip",
+    "3": "create_maglev:block/reinforced_track",
+    "particle": "create_maglev:block/reinforced_track"
+  }
+}

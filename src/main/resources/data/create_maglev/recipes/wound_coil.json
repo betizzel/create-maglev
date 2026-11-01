@@ -1,0 +1,30 @@
+{
+  "type": "create:sequenced_assembly",
+  "ingredient": {"item": "create_new_age:copper_wire"},
+  "transitionalItem": {"item": "create_maglev:incomplete_wound_coil"},
+  "sequence": [
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {"item": "create_maglev:incomplete_wound_coil"},
+        {"item": "create:shaft"}
+      ],
+      "results": [{"item": "create_maglev:incomplete_wound_coil"}]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {"item": "create_maglev:incomplete_wound_coil"},
+        {"item": "create_new_age:copper_wire"}
+      ],
+      "results": [{"item": "create_maglev:incomplete_wound_coil"}]
+    },
+    {
+      "type": "create:pressing",
+      "ingredients": [{"item": "create_maglev:incomplete_wound_coil"}],
+      "results": [{"item": "create_maglev:incomplete_wound_coil"}]
+    }
+  ],
+  "loops": 2,
+  "results": [{"item": "create_maglev:wound_coil"}]
+}

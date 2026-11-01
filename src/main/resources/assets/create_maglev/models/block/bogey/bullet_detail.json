@@ -1,0 +1,57 @@
+{
+  "textures": {
+    "body": "create_maglev:block/bogey_bullet",
+    "accent": "create_maglev:block/bogey_bullet_accent",
+    "particle": "create_maglev:block/bogey_bullet"
+  },
+  "elements": [
+    {
+      "from": [-7, 8, -14], "to": [7, 11, 14],
+      "faces": {
+        "north": {"texture": "#body"}, "south": {"texture": "#body"},
+        "east": {"texture": "#body"}, "west": {"texture": "#body"},
+        "up": {"texture": "#body"}, "down": {"texture": "#body"}
+      }
+    },
+    {
+      "from": [-6, 11, -9], "to": [6, 14, 9],
+      "faces": {
+        "north": {"texture": "#accent"}, "south": {"texture": "#accent"},
+        "east": {"texture": "#accent"}, "west": {"texture": "#accent"},
+        "up": {"texture": "#accent"}, "down": {"texture": "#accent"}
+      }
+    },
+    {
+      "from": [-4, 11, 9], "to": [4, 14, 13],
+      "faces": {
+        "north": {"texture": "#accent"}, "south": {"texture": "#accent"},
+        "east": {"texture": "#accent"}, "west": {"texture": "#accent"},
+        "up": {"texture": "#accent"}, "down": {"texture": "#accent"}
+      }
+    },
+    {
+      "from": [-2, 11, 13], "to": [2, 14, 16],
+      "faces": {
+        "north": {"texture": "#body"}, "south": {"texture": "#body"},
+        "east": {"texture": "#body"}, "west": {"texture": "#body"},
+        "up": {"texture": "#accent"}, "down": {"texture": "#body"}
+      }
+    },
+    {
+      "from": [-8, 6, -10], "to": [-7, 11, 10],
+      "faces": {
+        "north": {"texture": "#body"}, "south": {"texture": "#body"},
+        "east": {"texture": "#accent"}, "west": {"texture": "#body"},
+        "up": {"texture": "#body"}, "down": {"texture": "#body"}
+      }
+    },
+    {
+      "from": [7, 6, -10], "to": [8, 11, 10],
+      "faces": {
+        "north": {"texture": "#body"}, "south": {"texture": "#body"},
+        "east": {"texture": "#body"}, "west": {"texture": "#accent"},
+        "up": {"texture": "#body"}, "down": {"texture": "#body"}
+      }
+    }
+  ]
+}

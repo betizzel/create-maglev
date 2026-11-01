@@ -1,0 +1,23 @@
+{
+  "variants": {
+    "shape=none": {"model": "minecraft:block/air"},
+    "shape=zo": {"model": "create_maglev:block/reinforced_track/z_ortho"},
+    "shape=xo": {"model": "create_maglev:block/reinforced_track/x_ortho"},
+    "shape=pd": {"model": "create_maglev:block/reinforced_track/diag"},
+    "shape=nd": {"model": "create_maglev:block/reinforced_track/diag_2"},
+    "shape=an": {"model": "create_maglev:block/reinforced_track/ascending", "y": 180},
+    "shape=as": {"model": "create_maglev:block/reinforced_track/ascending"},
+    "shape=ae": {"model": "create_maglev:block/reinforced_track/ascending", "y": 270},
+    "shape=aw": {"model": "create_maglev:block/reinforced_track/ascending", "y": 90},
+    "shape=tn": {"model": "create_maglev:block/reinforced_track/teleport", "y": 180},
+    "shape=ts": {"model": "create_maglev:block/reinforced_track/teleport"},
+    "shape=te": {"model": "create_maglev:block/reinforced_track/teleport", "y": 270},
+    "shape=tw": {"model": "create_maglev:block/reinforced_track/teleport", "y": 90},
+    "shape=cr_o": {"model": "create_maglev:block/reinforced_track/cross_ortho"},
+    "shape=cr_d": {"model": "create_maglev:block/reinforced_track/cross_diag"},
+    "shape=cr_pdx": {"model": "create_maglev:block/reinforced_track/cross_d1_xo"},
+    "shape=cr_pdz": {"model": "create_maglev:block/reinforced_track/cross_d1_zo"},
+    "shape=cr_ndx": {"model": "create_maglev:block/reinforced_track/cross_d2_xo"},
+    "shape=cr_ndz": {"model": "create_maglev:block/reinforced_track/cross_d2_zo"}
+  }
+}

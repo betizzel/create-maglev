@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "key": {
+    "S": {"item": "create_maglev:steel_sheet"},
+    "T": {"item": "create:track"}
+  },
+  "pattern": ["S S", "TST", "S S"],
+  "result": {"count": 2, "item": "create_maglev:reinforced_track"}
+}

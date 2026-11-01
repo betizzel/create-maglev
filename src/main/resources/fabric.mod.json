@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "create_maglev",
+  "version": "${version}",
+  "name": "Create: Maglev",
+  "description": "A powered railway progression from electric bogeys to bullet trains and dedicated magnetic-levitation guideways, integrated with Create: New Age.",
+  "authors": ["bay"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.createmaglev.CreateMaglev"],
+    "client": ["dev.createmaglev.client.CreateMaglevClient"]
+  },
+  "mixins": ["create_maglev.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "1.20.1",
+    "java": ">=17",
+    "fabric-api": "*",
+    "create": "~6.0.8",
+    "create_new_age": "~1.2.0",
+    "esl": ">=1.1.3"
+  }
+}

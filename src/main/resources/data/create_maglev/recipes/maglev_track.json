@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "key": {
+    "W": {"item": "create_new_age:overcharged_iron_wire"},
+    "S": {"item": "create_maglev:steel_sheet"},
+    "R": {"item": "create_maglev:reinforced_track"},
+    "M": {"item": "create_maglev:levitation_module"}
+  },
+  "pattern": ["WSW", "RMR", "WSW"],
+  "result": {"count": 2, "item": "create_maglev:maglev_track"}
+}

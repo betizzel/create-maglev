@@ -1,0 +1,105 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
+plugins {
+    id 'fabric-loom' version '1.12.7'
+    id 'maven-publish'
+}
+
+allprojects {
+    group = 'dev.createmaglev'
+    version = rootProject.mod_version
+    repositories {
+        mavenCentral()
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.createmod.net/' }
+        maven { url = 'https://mvn.devos.one/releases/' }
+        maven { url = 'https://mvn.devos.one/snapshots/' }
+        maven { url = 'https://maven.terraformersmc.com/releases/' }
+        maven { url = 'https://maven.shedaniel.me/' }
+        maven { url = 'https://api.modrinth.com/maven/' }
+        maven { url = 'https://maven.idiotss.com/releases/' }
+        maven { url = 'https://raw.githubusercontent.com/Fuzss/modresources/main/maven/' }
+        maven { url = 'https://maven.jamieswhiteshirt.com/libs-release/' }
+    }
+}
+
+subprojects { apply plugin: 'fabric-loom' }
+
+allprojects {
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(17)
+        withSourcesJar()
+    }
+    dependencies {
+        minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+        mappings loom.officialMojangMappings()
+        modImplementation "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+        modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+        modImplementation "com.simibubi.create:create-fabric:${rootProject.create_version}"
+        modImplementation 'dev.engine-room.flywheel:flywheel-fabric-1.20.1:1.0.5-264'
+        modImplementation 'net.createmod.ponder:Ponder-Fabric-1.20.1:1.0.91'
+        modImplementation 'com.tterrag.registrate_fabric:Registrate:1.3.79-MC1.20.1'
+        modImplementation("maven.modrinth:create-new-age:${rootProject.new_age_version}") { transitive = false }
+        modCompileOnly('org.antarcticgardens.esl:esl-fabric-1.20.1:1.1.3+fabric-mc1.20.1') { transitive = false }
+        compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    }
+    configurations.configureEach {
+        exclude group: 'dev.engine-room.flywheel', module: 'flywheel-fabric-api-1.20.1'
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 17
+    }
+    tasks.withType(ProcessResources).configureEach {
+        inputs.property('version', project.version)
+        filesMatching('fabric.mod.json') { expand(version: project.version) }
+    }
+    tasks.withType(AbstractArchiveTask).configureEach {
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
+    }
+}
+
+base { archivesName = 'create-maglev' }
+
+tasks.named('jar') { from('LICENSE') }
+tasks.named('sourcesJar') { from('LICENSE') }
+
+loom {
+    runs {
+        client { runDir('build/run/dev-client') }
+        server { runDir('build/run/dev-server') }
+    }
+}
+
+configurations {
+    productionMods { transitive = false }
+}
+
+dependencies {
+    productionMods "com.simibubi.create:create-fabric:${create_version}"
+    productionMods "maven.modrinth:create-new-age:${new_age_version}"
+    productionMods "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+    productionMods 'fuzs.forgeconfigapiport:forgeconfigapiport-fabric:8.0.2'
+}
+
+def runtimeDirectory = layout.buildDirectory.dir('production-pack')
+tasks.register('packageRuntime', Sync) {
+    group = 'distribution'
+    description = 'Packages exact production dependencies and the remapped addon, without test helpers.'
+    dependsOn tasks.named('remapJar')
+    into runtimeDirectory
+    from(configurations.productionMods) { into 'mods' }
+    from(tasks.named('remapJar').flatMap { it.archiveFile }) { into 'mods' }
+    doLast {
+        File directory = runtimeDirectory.get().asFile
+        def mods = new File(directory, 'mods').listFiles().sort { it.name }.collect { jar ->
+            [file: 'mods/' + jar.name, bytes: jar.length(),
+             sha256: MessageDigest.getInstance('SHA-256').digest(jar.bytes).encodeHex().toString()]
+        }
+        new File(directory, 'manifest.json').text = JsonOutput.prettyPrint(JsonOutput.toJson([
+            runtime: [minecraft: minecraft_version, loader: 'fabric', loaderVersion: fabric_loader_version], mods: mods
+        ])) + '\n'
+    }
+}

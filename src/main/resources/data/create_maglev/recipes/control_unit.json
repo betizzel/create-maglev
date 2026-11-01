@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "R": {"item": "minecraft:redstone"},
+    "S": {"item": "create:electron_tube"},
+    "O": {"item": "create_new_age:overcharged_iron"},
+    "C": {"item": "create:andesite_casing"}
+  },
+  "pattern": ["RSR", "OCO", "RSR"],
+  "result": {"count": 1, "item": "create_maglev:control_unit"}
+}

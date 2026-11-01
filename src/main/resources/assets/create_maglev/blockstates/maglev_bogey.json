@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "axis=x": {"model": "create_maglev:block/maglev_bogey", "y": 90},
+    "axis=z": {"model": "create_maglev:block/maglev_bogey"}
+  }
+}

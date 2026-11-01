@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.createmaglev.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["TrainMixin", "NavigationAccessor", "CarriageLevitationMixin", "CarriageAlignmentMixin"],
+  "injectors": {"defaultRequire": 1}
+}

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "key": {
+    "B": {"item": "create_new_age:carbon_brushes"},
+    "S": {"item": "create_maglev:steel_sheet"},
+    "W": {"item": "create_new_age:copper_wire"},
+    "G": {"item": "create_new_age:generator_coil"},
+    "C": {"item": "create_new_age:electrical_connector"}
+  },
+  "pattern": ["BSB", "WGW", "SCS"],
+  "result": {"count": 1, "item": "create_maglev:traction_substation"}
+}

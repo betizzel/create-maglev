@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    "create_maglev:reinforced_track",
+    "create_maglev:maglev_track"
+  ]
+}

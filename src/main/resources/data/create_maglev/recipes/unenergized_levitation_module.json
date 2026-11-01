@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [" S ", "LMC", " S "],
+  "key": {
+    "S": {"item": "create_new_age:overcharged_iron_sheet"},
+    "L": {"item": "create_maglev:laminated_core"},
+    "M": {"item": "create_new_age:layered_magnet"},
+    "C": {"item": "create_maglev:wound_coil"}
+  },
+  "result": {"item": "create_maglev:unenergized_levitation_module"}
+}

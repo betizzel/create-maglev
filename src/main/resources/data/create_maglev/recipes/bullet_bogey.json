@@ -1,0 +1,33 @@
+{
+  "type": "create:sequenced_assembly",
+  "ingredient": {"item": "create_maglev:electric_bogey"},
+  "transitionalItem": {"item": "create_maglev:incomplete_bullet_bogey"},
+  "sequence": [
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {"item": "create_maglev:incomplete_bullet_bogey"},
+        {"item": "create_maglev:steel_sheet"}
+      ],
+      "results": [{"item": "create_maglev:incomplete_bullet_bogey"}]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {"item": "create_maglev:incomplete_bullet_bogey"},
+        {"item": "create_new_age:overcharged_iron_sheet"}
+      ],
+      "results": [{"item": "create_maglev:incomplete_bullet_bogey"}]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {"item": "create_maglev:incomplete_bullet_bogey"},
+        {"item": "create_maglev:control_unit"}
+      ],
+      "results": [{"item": "create_maglev:incomplete_bullet_bogey"}]
+    }
+  ],
+  "loops": 1,
+  "results": [{"item": "create_maglev:bullet_bogey"}]
+}

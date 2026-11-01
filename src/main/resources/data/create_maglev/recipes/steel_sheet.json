@@ -1,0 +1,9 @@
+{
+  "type": "create:pressing",
+  "ingredients": [
+    {"item": "create_maglev:steel_ingot"}
+  ],
+  "results": [
+    {"item": "create_maglev:steel_sheet"}
+  ]
+}

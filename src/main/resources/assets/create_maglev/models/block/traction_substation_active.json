@@ -1,0 +1,4 @@
+{
+  "parent": "create_maglev:block/traction_substation",
+  "textures": {"panel": "create_maglev:block/traction_substation_panel_active"}
+}

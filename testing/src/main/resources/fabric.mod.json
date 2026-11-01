@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "create_maglev_tests",
+  "version": "${version}",
+  "name": "Create Maglev Behavioral Tests",
+  "description": "Disposable native GameTests and recorded-client assertions; not a gameplay mod.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.createmaglev.testing.MaglevTestMod"],
+    "client": ["dev.createmaglev.testing.MaglevTestClient"],
+    "fabric-gametest": [
+      "dev.createmaglev.testing.NativeCreateBatchSetup",
+      "dev.createmaglev.testing.MaglevGameTests",
+      "dev.createmaglev.testing.NativeEnergisingTests"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "1.20.1",
+    "java": ">=17",
+    "fabric-api": "*",
+    "fabric-gametest-api-v1": "*",
+    "create": ">=6.0.8",
+    "create_new_age": ">=1.2.0",
+    "create_maglev": "*"
+  }
+}

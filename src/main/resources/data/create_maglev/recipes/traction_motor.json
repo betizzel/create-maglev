@@ -1,0 +1,30 @@
+{
+  "type": "create:sequenced_assembly",
+  "ingredient": {"item": "create_maglev:steel_sheet"},
+  "transitionalItem": {"item": "create_maglev:incomplete_traction_motor"},
+  "sequence": [
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {"item": "create_maglev:incomplete_traction_motor"},
+        {"item": "create_maglev:wound_coil"}
+      ],
+      "results": [{"item": "create_maglev:incomplete_traction_motor"}]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {"item": "create_maglev:incomplete_traction_motor"},
+        {"item": "create_maglev:laminated_core"}
+      ],
+      "results": [{"item": "create_maglev:incomplete_traction_motor"}]
+    },
+    {
+      "type": "create:pressing",
+      "ingredients": [{"item": "create_maglev:incomplete_traction_motor"}],
+      "results": [{"item": "create_maglev:incomplete_traction_motor"}]
+    }
+  ],
+  "loops": 1,
+  "results": [{"item": "create_maglev:traction_motor"}]
+}
