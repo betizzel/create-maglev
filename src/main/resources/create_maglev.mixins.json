@@ -4,5 +4,6 @@
   "package": "dev.createmaglev.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": ["TrainMixin", "NavigationAccessor", "CarriageLevitationMixin", "CarriageAlignmentMixin"],
+  "client": ["CarriageSoundsMixin"],
   "injectors": {"defaultRequire": 1}
 }

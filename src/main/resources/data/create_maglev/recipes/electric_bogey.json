@@ -7,7 +7,7 @@
       "type": "create:deploying",
       "ingredients": [
         {"item": "create_maglev:incomplete_electric_bogey"},
-        {"item": "create_maglev:steel_sheet"}
+        {"tag": "c:steel_plates"}
       ],
       "results": [{"item": "create_maglev:incomplete_electric_bogey"}]
     },

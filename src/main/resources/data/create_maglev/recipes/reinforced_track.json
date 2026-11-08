@@ -2,7 +2,7 @@
   "type": "minecraft:crafting_shaped",
   "category": "building",
   "key": {
-    "S": {"item": "create_maglev:steel_sheet"},
+    "S": {"tag": "c:steel_plates"},
     "T": {"item": "create:track"}
   },
   "pattern": ["S S", "TST", "S S"],

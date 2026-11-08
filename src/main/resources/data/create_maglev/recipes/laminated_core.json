@@ -3,7 +3,7 @@
   "category": "misc",
   "key": {
     "M": {"item": "create_new_age:magnetite_block"},
-    "S": {"item": "create_maglev:steel_sheet"}
+    "S": {"tag": "c:steel_plates"}
   },
   "pattern": ["MSM", "S S", "MSM"],
   "result": {"count": 1, "item": "create_maglev:laminated_core"}

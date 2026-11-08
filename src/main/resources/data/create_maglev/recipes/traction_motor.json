@@ -1,6 +1,6 @@
 {
   "type": "create:sequenced_assembly",
-  "ingredient": {"item": "create_maglev:steel_sheet"},
+  "ingredient": {"tag": "c:steel_plates"},
   "transitionalItem": {"item": "create_maglev:incomplete_traction_motor"},
   "sequence": [
     {

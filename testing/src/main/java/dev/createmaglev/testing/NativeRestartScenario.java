@@ -12,6 +12,7 @@ import com.simibubi.create.content.trains.entity.Train;
 import com.simibubi.create.content.trains.graph.TrackEdge;
 import com.simibubi.create.content.trains.schedule.destination.DestinationInstruction;
 import com.simibubi.create.content.trains.track.TrackMaterial;
+import dev.createmaglev.config.MaglevConfig;
 import dev.createmaglev.content.MaglevContent;
 import dev.createmaglev.content.MaglevBogeyStyles;
 import dev.createmaglev.power.TractionPower;
@@ -212,7 +213,7 @@ public final class NativeRestartScenario {
                 return;
 
             assertPhysicalLift(entity, train, traction.lift());
-            if (TractionPower.find(prepareLevel, leadingPosition(train)) != source.substation())
+            if (!source.substationPos().equals(TractionPower.nearestSupply(prepareLevel, leadingPosition(train))))
                 throw new IllegalStateException("The moving train was not powered by its actual retained NewAge substation");
             prepareAndHalt(server, train, entity, moved, energy);
         }
@@ -249,11 +250,11 @@ public final class NativeRestartScenario {
             BlockState substationState = prepareLevel.getBlockState(substationPos);
             if (!substationState.getValue(TractionSubstationBlock.POWERED))
                 throw new IllegalStateException("The real traction substation breaker did not open after placing the redstone block");
-            if (TractionPower.find(prepareLevel, leadingPosition(train)) != null)
+            if (TractionPower.nearestSupply(prepareLevel, leadingPosition(train)) != null)
                 throw new IllegalStateException("TractionPower still found a live supply with the real breaker open");
 
             long retainedEnergy = source.substation().energyStored();
-            if (retainedEnergy <= 0 || retainedEnergy > TractionSubstationBlockEntity.CAPACITY
+            if (retainedEnergy <= 0 || retainedEnergy > MaglevConfig.substationCapacity()
                     || retainedEnergy < MIN_RETAINED_ENERGY)
                 throw new IllegalStateException("Real substation did not retain usable finite charge at cutoff: " + retainedEnergy);
             if (retainedEnergy != energyBeforeCut)
@@ -270,7 +271,7 @@ public final class NativeRestartScenario {
             power.add("sourceConnectorPos", blockPos(POWER_ORIGIN.above().relative(Direction.EAST)));
             power.add("sinkConnectorPos", blockPos(substationPos.relative(Direction.EAST)));
             power.addProperty("retainedEnergy", retainedEnergy);
-            power.addProperty("capacity", TractionSubstationBlockEntity.CAPACITY);
+            power.addProperty("capacity", MaglevConfig.substationCapacity());
             power.addProperty("breakerOpen", true);
             power.addProperty("generationStopped", true);
             power.addProperty("wireDisconnected", true);
@@ -402,7 +403,7 @@ public final class NativeRestartScenario {
             var traction = ((TractionState) train).maglev$traction();
             if (traction.powered() || traction.authoritative())
                 throw new IllegalStateException("A newly loaded train began with synthetic authoritative traction state");
-            if (TractionPower.find(level, currentPoint) != null)
+            if (TractionPower.nearestSupply(level, currentPoint) != null)
                 throw new IllegalStateException("A loaded train found a live traction supply while its persisted breaker was open");
             if (!expectedSchedule(train, checkpoint.get("destinationName").getAsString()))
                 throw new IllegalStateException("Create did not restore the persisted train schedule and destination");
@@ -565,7 +566,7 @@ public final class NativeRestartScenario {
             Vec3 point = leadingPosition(reloadedTrain);
             var traction = ((TractionState) reloadedTrain).maglev$traction();
             if (traction.powered() || traction.speedLimit() > 0.001
-                    || TractionPower.find(verifyLevel, point) != null)
+                    || TractionPower.nearestSupply(verifyLevel, point) != null)
                 throw new IllegalStateException("A closed-off supply became available to native traction after reload");
             if (reloadedSubstation.energyStored() != noPowerStartEnergy)
                 throw new IllegalStateException("Finite retained charge changed while native emergency braking/landing ran");
@@ -599,7 +600,7 @@ public final class NativeRestartScenario {
             if (traction.authoritative() && traction.powered() && traction.tier() == TrainTier.MAGLEV
                     && traction.lift() > 0.1f && moved > 0.5 && energy < resumeStartEnergy) {
                 assertPhysicalLift(liveCarriage, train, traction.lift());
-                if (TractionPower.find(verifyLevel, leadingPosition(train)) != reloadedSubstation)
+                if (!reloadedSubstation.getBlockPos().equals(TractionPower.nearestSupply(verifyLevel, leadingPosition(train))))
                     throw new IllegalStateException("Resumed native motion was not supplied by the persisted charged substation");
                 JsonObject resume = new JsonObject();
                 resume.addProperty("breakerClosed", true);

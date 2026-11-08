@@ -1,0 +1,27 @@
+{
+  "parent": "create_maglev:root",
+  "display": {
+    "icon": {
+      "item": "create_maglev:steel_ingot"
+    },
+    "title": {
+      "translate": "advancements.create_maglev.steel_ingot.title"
+    },
+    "description": {
+      "translate": "advancements.create_maglev.steel_ingot.description"
+    },
+    "frame": "task"
+  },
+  "criteria": {
+    "acquired_steel_ingot": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "tag": "c:steel_ingots"
+          }
+        ]
+      }
+    }
+  }
+}

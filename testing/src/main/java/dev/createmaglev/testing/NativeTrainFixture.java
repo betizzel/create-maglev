@@ -21,6 +21,11 @@ import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackMaterial;
 import com.simibubi.create.content.trains.track.TrackBlockEntity;
 import com.simibubi.create.content.trains.track.TrackShape;
+import dev.createmaglev.power.TractionPower;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -41,6 +46,13 @@ public final class NativeTrainFixture {
     public static final int DESTINATION_OFFSET = 96;
     private static final int BOGEY_SPACING = 12;
     public static final BlockPos CONTROL_OFFSET = new BlockPos(0, 1, BOGEY_SPACING / 2);
+    private static final int ROUTE_MARGIN = 24;
+    private static final int SUBSTATION_SPACING = 88;
+
+    private record RouteLocation(Vec3 position, Vec3 tangent) {}
+
+    private record ForcedChunk(int x, int z) {}
+
     public static final BlockPos RIDER_SEAT_OFFSET = new BlockPos(0, 2, 5);
 
     private NativeTrainFixture() {}
@@ -60,6 +72,10 @@ public final class NativeTrainFixture {
         public StationBlockEntity startStation;
         public StationBlockEntity destinationStation;
         public Train train;
+        public BezierConnection turn;
+        public final List<BlockPos> substationPositions = new ArrayList<>();
+        private final List<ForcedChunk> forcedChunks = new ArrayList<>();
+
 
         private BuiltTrain(ServerLevel level, BlockPos origin, TrackBlock trackBlock, TrackMaterial material,
                            String stationPrefix, BlockPos destinationStationPos, BlockPos destinationRailPos) {
@@ -160,6 +176,13 @@ public final class NativeTrainFixture {
                 }
             }
         }
+        /** Releases exactly the chunks forced for a route fixture. */
+        public void releaseForcedChunks() {
+            for (ForcedChunk chunk : forcedChunks) {
+                level.setChunkForced(chunk.x(), chunk.z(), false);
+            }
+        }
+
 
         public StationBlockEntity station(BlockPos stationPos, BlockPos railPos, String name) {
             BlockEntity blockEntity = level.getBlockEntity(stationPos);
@@ -261,6 +284,164 @@ public final class NativeTrainFixture {
         fixture.destinationStation = fixture.station(fixture.destinationStationPos, destinationRail, fixture.destinationName);
         placeTrainBody(level, fixture, bogeyBlock, false);
         return fixture;
+    }
+
+    /**
+     * Builds a long native route: southbound approach, an optional south-to-east Bezier turn,
+     * and an eastbound exit. Route chunks are forced only within the configured margin around
+     * the path; callers release them with {@link BuiltTrain#releaseForcedChunks()}.
+     */
+    public static BuiltTrain buildRoute(ServerLevel level, BlockPos origin, TrackBlock trackBlock,
+                                        TrackMaterial material, String stationPrefix, Block bogeyBlock,
+                                        int approachLength, int curveRadius, int exitLength) {
+        if (approachLength < 0 || curveRadius < 0 || exitLength < 0) {
+            throw new IllegalArgumentException("Route segment lengths and radius must be non-negative");
+        }
+
+        boolean curved = curveRadius > 0;
+        int straightLength = curved ? approachLength : approachLength + exitLength;
+        int endX = curved ? curveRadius + exitLength : 0;
+        int endZ = curved ? approachLength + curveRadius : straightLength;
+        BlockPos destinationRail = origin.offset(endX, 0, endZ);
+        BlockPos destinationStation = curved
+                ? destinationRail.relative(Direction.SOUTH)
+                : destinationRail.offset(3, 0, 0);
+        BuiltTrain fixture = new BuiltTrain(level, origin, trackBlock, material, stationPrefix,
+                destinationStation, destinationRail);
+        forceRouteBounds(fixture, origin.getX() - ROUTE_MARGIN - 8, origin.getZ() - ROUTE_MARGIN - 8,
+                destinationRail.getX() + ROUTE_MARGIN + 8, destinationRail.getZ() + ROUTE_MARGIN + 8);
+
+        List<Vec3> routePoints = new ArrayList<>();
+        BlockState base = trackBlock.defaultBlockState().setValue(TrackBlock.HAS_BE, true);
+        BlockState southTrack = base.setValue(TrackBlock.SHAPE, TrackShape.ZO);
+        for (int offset = 0; offset <= approachLength; offset++) {
+            BlockPos pos = origin.relative(Direction.SOUTH, offset);
+            level.setBlock(pos.below(), Blocks.STONE.defaultBlockState(), 3);
+            level.setBlock(pos, southTrack, 3);
+            routePoints.add(blockCenter(pos));
+        }
+
+        if (curved) {
+            BlockState eastTrack = base.setValue(TrackBlock.SHAPE, TrackShape.XO);
+            BlockPos curveStartPos = origin.relative(Direction.SOUTH, approachLength);
+            BlockPos curveEndPos = origin.offset(curveRadius, 0, approachLength + curveRadius);
+            for (int offset = 1; offset <= exitLength; offset++) {
+                BlockPos pos = curveEndPos.relative(Direction.EAST, offset);
+                level.setBlock(pos.below(), Blocks.STONE.defaultBlockState(), 3);
+                level.setBlock(pos, eastTrack, 3);
+            }
+            level.setBlock(curveEndPos.below(), Blocks.STONE.defaultBlockState(), 3);
+            level.setBlock(curveEndPos, eastTrack, 3);
+
+            Vec3 curveStart = trackBlock.getCurveStart(level, curveStartPos, southTrack, new Vec3(0, 0, 1));
+            Vec3 curveEnd = trackBlock.getCurveStart(level, curveEndPos, eastTrack, new Vec3(-1, 0, 0));
+            BezierConnection curve = new BezierConnection(
+                    Couple.create(curveStartPos, curveEndPos),
+                    Couple.create(curveStart, curveEnd),
+                    Couple.create(new Vec3(0, 0, 1), new Vec3(-1, 0, 0)),
+                    Couple.create(new Vec3(0, 1, 0), new Vec3(0, 1, 0)),
+                    true, false, material);
+            if (!(level.getBlockEntity(curveStartPos) instanceof TrackBlockEntity startCurve)
+                    || !(level.getBlockEntity(curveEndPos) instanceof TrackBlockEntity endCurve)) {
+                throw new IllegalStateException("Native Create route curve endpoints have no track block entities");
+            }
+            startCurve.addConnection(curve);
+            endCurve.addConnection(curve.secondary());
+            fixture.turn = curve;
+            int curveSamples = Math.max(curve.getSegmentCount(), 1);
+            for (int sample = 1; sample <= curveSamples; sample++) {
+                routePoints.add(curve.getPosition((double) sample / curveSamples));
+            }
+            for (int offset = 1; offset <= exitLength; offset++) {
+                routePoints.add(blockCenter(curveEndPos.relative(Direction.EAST, offset)));
+            }
+        } else {
+            for (int offset = approachLength + 1; offset <= straightLength; offset++) {
+                BlockPos pos = origin.relative(Direction.SOUTH, offset);
+                level.setBlock(pos.below(), Blocks.STONE.defaultBlockState(), 3);
+                level.setBlock(pos, southTrack, 3);
+                routePoints.add(blockCenter(pos));
+            }
+        }
+
+        BlockState stationState = AllBlocks.TRACK_STATION.get().defaultBlockState();
+        level.setBlock(fixture.startStationPos, stationState, 3);
+        level.setBlock(fixture.destinationStationPos, stationState, 3);
+        fixture.startStation = fixture.station(fixture.startStationPos, origin, stationPrefix + "-start");
+        fixture.destinationStation = fixture.station(fixture.destinationStationPos,
+                destinationRail, fixture.destinationName);
+        placeRouteSubstations(level, fixture, routePoints);
+        retainRouteChunks(fixture, routePoints);
+        placeTrainBody(level, fixture, bogeyBlock, false);
+        return fixture;
+    }
+
+    private static Vec3 blockCenter(BlockPos pos) {
+        return new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+    }
+
+    private static void forceRouteBounds(BuiltTrain fixture, int minX, int minZ, int maxX, int maxZ) {
+        for (int chunkX = minX >> 4; chunkX <= maxX >> 4; chunkX++) {
+            for (int chunkZ = minZ >> 4; chunkZ <= maxZ >> 4; chunkZ++) {
+                ForcedChunk chunk = new ForcedChunk(chunkX, chunkZ);
+                fixture.forcedChunks.add(chunk);
+                fixture.level.setChunkForced(chunkX, chunkZ, true);
+                fixture.level.getChunk(chunkX, chunkZ);
+            }
+        }
+    }
+
+    private static void retainRouteChunks(BuiltTrain fixture, List<Vec3> routePoints) {
+        Set<ForcedChunk> needed = new HashSet<>();
+        for (Vec3 point : routePoints) {
+            int x = (int) Math.floor(point.x);
+            int z = (int) Math.floor(point.z);
+            for (int chunkX = (x - ROUTE_MARGIN) >> 4; chunkX <= (x + ROUTE_MARGIN) >> 4; chunkX++) {
+                for (int chunkZ = (z - ROUTE_MARGIN) >> 4; chunkZ <= (z + ROUTE_MARGIN) >> 4; chunkZ++) {
+                    needed.add(new ForcedChunk(chunkX, chunkZ));
+                }
+            }
+        }
+        for (ForcedChunk chunk : fixture.forcedChunks) {
+            if (!needed.contains(chunk)) fixture.level.setChunkForced(chunk.x(), chunk.z(), false);
+        }
+        fixture.forcedChunks.clear();
+        fixture.forcedChunks.addAll(needed);
+    }
+
+    private static void placeRouteSubstations(ServerLevel level, BuiltTrain fixture, List<Vec3> routePoints) {
+        double[] cumulative = new double[routePoints.size()];
+        for (int index = 1; index < routePoints.size(); index++) {
+            cumulative[index] = cumulative[index - 1] + routePoints.get(index).distanceTo(routePoints.get(index - 1));
+        }
+        double totalLength = cumulative[cumulative.length - 1];
+        for (double distance = 0; distance < totalLength; distance += SUBSTATION_SPACING) {
+            placeRouteSubstation(level, fixture, routeLocationAt(routePoints, cumulative, distance));
+        }
+        placeRouteSubstation(level, fixture, routeLocationAt(routePoints, cumulative, totalLength));
+    }
+
+    private static RouteLocation routeLocationAt(List<Vec3> points, double[] cumulative, double distance) {
+        int end = 1;
+        while (end < cumulative.length - 1 && cumulative[end] < distance) end++;
+        while (end < cumulative.length - 1 && cumulative[end] - cumulative[end - 1] < 1.0e-6) end++;
+        Vec3 start = points.get(end - 1);
+        Vec3 segment = points.get(end).subtract(start);
+        double length = segment.length();
+        double fraction = length < 1.0e-6 ? 0 : (distance - cumulative[end - 1]) / length;
+        fraction = Math.max(0, Math.min(1, fraction));
+        return new RouteLocation(start.add(segment.scale(fraction)), segment.normalize());
+    }
+
+    private static void placeRouteSubstation(ServerLevel level, BuiltTrain fixture, RouteLocation location) {
+        Vec3 tangent = location.tangent();
+        int x = (int) Math.floor(location.position().x + tangent.z * 4);
+        int z = (int) Math.floor(location.position().z - tangent.x * 4);
+        BlockPos pos = new BlockPos(x, fixture.origin.getY(), z);
+        if (fixture.substationPositions.contains(pos)) return;
+        level.setBlock(pos.below(), Blocks.STONE.defaultBlockState(), 3);
+        level.setBlock(pos, TractionPower.SUBSTATION.defaultBlockState(), 3);
+        fixture.substationPositions.add(pos);
     }
 
     private static void placeTrainBody(ServerLevel level, BuiltTrain fixture, Block bogeyBlock, boolean controls) {

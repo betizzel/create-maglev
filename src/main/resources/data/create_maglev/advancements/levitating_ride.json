@@ -1,0 +1,20 @@
+{
+  "parent": "create_maglev:maglev_bogey",
+  "display": {
+    "icon": {
+      "item": "create_maglev:maglev_bogey"
+    },
+    "title": {
+      "translate": "advancements.create_maglev.levitating_ride.title"
+    },
+    "description": {
+      "translate": "advancements.create_maglev.levitating_ride.description"
+    },
+    "frame": "challenge"
+  },
+  "criteria": {
+    "rode_levitating_maglev": {
+      "trigger": "create_maglev:levitating_ride"
+    }
+  }
+}

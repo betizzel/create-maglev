@@ -7,6 +7,7 @@ import com.simibubi.create.AllBlocks;
 import com.simibubi.create.content.trains.entity.TravellingPoint;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackMaterial;
+import dev.createmaglev.config.MaglevConfig;
 import dev.createmaglev.content.MaglevContent;
 import dev.createmaglev.power.TractionPower;
 import dev.createmaglev.train.TractionState;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.LockSupport;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.core.BlockPos;
@@ -41,16 +43,23 @@ public final class MaglevTestMod implements ModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger(MaglevTestMod.class);
     private static final RecordedSuite RECORDED = new RecordedSuite();
     private static long lastTickNanos;
+    /** Harness scenes measure debits from a full buffer while generation may still run; keep the 1.0.x size. */
+    private static final int HARNESS_SUBSTATION_CAPACITY = 8192;
 
     @Override
     public void onInitialize() {
         if (!Boolean.getBoolean("createmaglev.tests")) {
             throw new IllegalStateException("The test helper must only load with -Dcreatemaglev.tests=true");
         }
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            MaglevConfig.SUBSTATION_CAPACITY.set(HARNESS_SUBSTATION_CAPACITY);
+            LOGGER.info("Test harness pinned substation capacity to {}", MaglevConfig.substationCapacity());
+        });
         ServerTickEvents.START_SERVER_TICK.register(server -> {
             paceNativeTick();
         });
         NativeRestartScenario.register();
+        NativePassengerWalkthrough.register();
         if (Boolean.getBoolean("createmaglev.tests.recorded")) {
             ServerPlayNetworking.registerGlobalReceiver(CONTROL, (server, player, handler, buffer, responseSender) -> {
                 final String message;
@@ -294,10 +303,10 @@ public final class MaglevTestMod implements ModInitializer {
                     double advanced = probe.travel(built.train.graph, direction == 0 ? 2 : -2,
                             (graph, choices) -> choices.getSecond().get(0));
                     var point = probe.getPosition(built.train.graph);
-                    var provider = TractionPower.find(level, point);
+                    var provider = TractionPower.nearestSupply(level, point);
                     LOGGER.info("Native manual route {}: point={}, travelled={}, blocked={}, supplier={}",
                             direction == 0 ? "forward" : "backward", point, advanced, probe.blocked,
-                            provider == null ? "none" : provider.getBlockPos());
+                            provider == null ? "none" : provider);
                 }
             } else {
                 built.scheduleToDestination();

@@ -16,7 +16,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
 import org.antarcticgardens.cna.CNABlocks;
 import org.antarcticgardens.cna.content.electricity.connector.AbstractElectricalConnector;
 import net.minecraft.world.level.block.DirectionalBlock;
@@ -168,9 +167,6 @@ public final class NativeNewAgePowerFixture {
     public boolean isStillLoaded() {
         return level.hasChunkAt(origin) && level.getBlockEntity(coilPos) == coil
                 && level.getBlockEntity(brushPos) == brushes && level.getBlockEntity(substationPos) == substation;
-    }
-    public static TractionSubstationBlockEntity find(ServerLevel level, BlockPos origin) {
-        return TractionPower.find(level, Vec3.atCenterOf(origin));
     }
 
     public void removeOwnedTickets() {

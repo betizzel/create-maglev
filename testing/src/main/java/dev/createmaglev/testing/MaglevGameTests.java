@@ -11,6 +11,7 @@ import com.simibubi.create.content.trains.graph.DimensionPalette;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackMaterial;
 import com.simibubi.create.content.trains.track.TrackShape;
+import dev.createmaglev.config.MaglevConfig;
 import dev.createmaglev.content.MaglevContent;
 import dev.createmaglev.content.PropulsionBogeyBlock;
 import dev.createmaglev.power.TractionSubstationBlockEntity;
@@ -39,31 +40,78 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import org.antarcticgardens.cna.content.electricity.generation.brushes.CarbonBrushesBlockEntity;
 import org.antarcticgardens.cna.content.electricity.generation.coil.GeneratorCoilBlockEntity;
+import com.simibubi.create.content.trains.schedule.Schedule;
+import com.simibubi.create.content.trains.schedule.ScheduleEntry;
+import com.simibubi.create.content.trains.schedule.destination.DestinationInstruction;
+import com.simibubi.create.content.trains.station.GlobalStation;
+import dev.createmaglev.power.TractionPower;
+import java.util.List;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.state.BlockState;
+import org.antarcticgardens.esl.energy.EnergyStorage;
+import org.antarcticgardens.esl.transaction.Transaction;
+import org.antarcticgardens.esl.transaction.TransactionStack;
+import net.minecraft.gametest.framework.AfterBatch;
+import net.minecraft.gametest.framework.BeforeBatch;
 
 /** Consumer-facing native train, track, NewAge energy, and persistence behavior. */
 public final class MaglevGameTests implements FabricGameTest {
     private static final int REGION_SPACING = 512;
     private static final int LIVE_CARRIAGE_GRACE_TICKS = 8;
+    /** Charge delivered through the public ESL API; fits within the original 1.0.x buffer too. */
+    private static final long TEST_CHARGE = 8192;
+    private static final String WEAK_SUPPLY_BATCH = "create_maglev_weak_supply";
+    /** Just above two electric bogeys' 16-unit idle draw, so only a little is left for speed. */
+    private static final int WEAK_SUPPLY_OUTPUT = 20;
+    /** New train-running regressions stay out of Create's seeded default batch. */
+    private static final String SUPPLY_BATCH = "create_maglev_supply";
 
-    @GameTest(template = "create_maglev_tests:arena", timeoutTicks = 20, attempts = 1)
-    public void breakingElectricBogeyReturnsItsPurchasedUnit(GameTestHelper helper) {
+    @GameTest(template = "create_maglev_tests:arena", batch = "create_maglev_survival_mining", timeoutTicks = 40, attempts = 1)
+    public void survivalPickaxeMiningReturnsEveryAddonBlock(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
-        BlockPos rail = helper.absolutePos(new BlockPos(2, 1, 2));
-        BlockPos bogey = rail.above();
-        level.setBlock(rail.below(), Blocks.STONE.defaultBlockState(), 3);
-        level.setBlock(rail, AllBlocks.TRACK.getDefaultState().setValue(TrackBlock.SHAPE, TrackShape.XO), 3);
-        level.setBlock(bogey, MaglevContent.ELECTRIC_BOGEY.defaultBlockState(), 3);
-        helper.runAtTickTime(2, () -> {
-            helper.assertTrue(level.destroyBlock(bogey, true), "The purchased electric bogey must be breakable");
-            int recovered = 0;
-            for (ItemEntity drop : level.getEntitiesOfClass(ItemEntity.class, new AABB(bogey).inflate(1))) {
-                if (drop.getItem().is(MaglevContent.ELECTRIC_BOGEY.asItem())) {
-                    recovered += drop.getItem().getCount();
+        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        try {
+            player.setGameMode(GameType.SURVIVAL);
+            List<Block> blocks = List.of(TractionPower.SUBSTATION, MaglevContent.ELECTRIC_BOGEY, MaglevContent.BULLET_BOGEY,
+                    MaglevContent.MAGLEV_BOGEY, MaglevContent.REINFORCED_TRACK, MaglevContent.MAGLEV_TRACK);
+            int x = 1;
+            for (Block block : blocks) {
+                boolean bogey = block instanceof PropulsionBogeyBlock;
+                BlockPos base = helper.absolutePos(new BlockPos(x, 1, 2));
+                BlockPos pos = bogey ? base.above() : base;
+                AABB area = new AABB(pos).inflate(2);
+                level.getEntitiesOfClass(ItemEntity.class, area).forEach(Entity::discard);
+                level.setBlock(base.below(), Blocks.STONE.defaultBlockState(), 3);
+                if (bogey) {
+                    level.setBlock(base, AllBlocks.TRACK.getDefaultState().setValue(TrackBlock.SHAPE, TrackShape.XO), 3);
                 }
+                level.setBlock(pos, block.defaultBlockState(), 3);
+                BlockState placed = level.getBlockState(pos);
+                String name = BuiltInRegistries.BLOCK.getKey(block).toString();
+                player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_PICKAXE));
+                helper.assertTrue(placed.is(block), "Expected " + name + " to be placed for the mining check");
+                helper.assertTrue(player.hasCorrectToolForDrops(placed), "A pickaxe must be the correct harvesting tool for " + name);
+                helper.assertTrue(player.getMainHandItem().getDestroySpeed(placed) > 1.0F,
+                        "A pickaxe must mine " + name + " faster than a bare hand");
+                helper.assertTrue(player.gameMode.destroyBlock(pos), "A survival player must be able to break " + name);
+                int drops = 0;
+                for (ItemEntity drop : level.getEntitiesOfClass(ItemEntity.class, area)) {
+                    if (drop.getItem().is(block.asItem())) drops += drop.getItem().getCount();
+                    drop.discard();
+                }
+                helper.assertTrue(drops == 1, "Survival pickaxe mining must return exactly one " + name + ", got " + drops);
+                x += 3;
             }
-            helper.assertTrue(recovered == 1, "Breaking an electric bogey must return exactly one crafted electric bogey");
             helper.succeed();
-        });
+        } finally {
+            level.getServer().getPlayerList().remove(player);
+        }
     }
 
     @GameTest(template = "create_maglev_tests:arena", timeoutTicks = 240, attempts = 1)
@@ -120,12 +168,12 @@ public final class MaglevGameTests implements FabricGameTest {
             if (completed.get()) return;
             guarded(helper, completed, () -> {
                 if (!started.get()) {
-                    if (source.substation().energyStored() != TractionSubstationBlockEntity.CAPACITY) return;
+                    if (source.substation().energyStored() != MaglevConfig.substationCapacity()) return;
                     helper.assertTrue(source.hasLiveCopperWire(), "The native generator must fill the connected substation before isolation");
                     source.stopGeneration();
                     source.disconnect();
                     helper.assertTrue(!source.hasLiveCopperWire(), "The real generator wire must be detached before debit is measured");
-                    helper.assertTrue(source.substation().energyStored() == TractionSubstationBlockEntity.CAPACITY,
+                    helper.assertTrue(source.substation().energyStored() == MaglevConfig.substationCapacity(),
                             "The isolated substation must begin at its observed full capacity");
                     startingCharge.set(source.substation().energyStored());
                     Train assembled = built.assemble();
@@ -239,8 +287,9 @@ public final class MaglevGameTests implements FabricGameTest {
         AtomicReference<UUID> carriageId = new AtomicReference<>();
         AtomicInteger carriageWaitTicks = new AtomicInteger();
         AtomicInteger ticksAfterCurve = new AtomicInteger();
-        AtomicReference<Double> maxCurveSpeed = new AtomicReference<>(0d);
-        AtomicReference<Double> maxCurveLimit = new AtomicReference<>(0d);
+        AtomicReference<Double> curveSpeedExcess = new AtomicReference<>(Double.NEGATIVE_INFINITY);
+        AtomicReference<Double> curveEnvelopeExcess = new AtomicReference<>(Double.NEGATIVE_INFINITY);
+        AtomicReference<Double> curveLimit = new AtomicReference<>(Double.POSITIVE_INFINITY);
 
         helper.onEachTick(() -> {
             if (!started.get() || completed.get()) return;
@@ -264,8 +313,11 @@ public final class MaglevGameTests implements FabricGameTest {
                     sawCurve.set(true);
                     ticksAfterCurve.set(0);
                     double speed = Math.abs(train.speed);
-                    maxCurveSpeed.set(Math.max(maxCurveSpeed.get(), speed));
-                    maxCurveLimit.set(Math.max(maxCurveLimit.get(), traction.speedLimit()));
+                    // The radius-based limit of the tightest curve under any carriage point this tick.
+                    double limit = Math.min(curveLimitAt(liveCarriage.getLeadingPoint()), curveLimitAt(liveCarriage.getTrailingPoint()));
+                    curveLimit.set(Math.min(curveLimit.get(), limit));
+                    curveSpeedExcess.set(Math.max(curveSpeedExcess.get(), speed - limit));
+                    curveEnvelopeExcess.set(Math.max(curveEnvelopeExcess.get(), traction.speedLimit() - limit));
                     sawMotionOnCurve.set(sawMotionOnCurve.get() || speed > 0.001);
                 } else if (sawCurve.get()) {
                     ticksAfterCurve.incrementAndGet();
@@ -277,10 +329,11 @@ public final class MaglevGameTests implements FabricGameTest {
                             "The curve observation must come from the same registered live carriage");
                     helper.assertTrue(sawPowered.get(), "Native NewAge supply must power the reinforced bullet train");
                     helper.assertTrue(sawMotionOnCurve.get(), "The live carriage must move while its travelling point is on a Bezier turn");
-                    helper.assertTrue(maxCurveSpeed.get() <= 1.001,
-                            "Maximum observed bullet speed on a live curve must obey the one-block-per-tick safety limit");
-                    helper.assertTrue(maxCurveLimit.get() <= 1.001,
-                            "Native traction's speed envelope must remain at or below one while live carriage points occupy the curve");
+                    helper.assertTrue(curveSpeedExcess.get() <= 0.001,
+                            "Bullet speed on a live curve must obey that curve's radius-based limit " + curveLimit.get()
+                                    + "; worst excess " + curveSpeedExcess.get());
+                    helper.assertTrue(curveEnvelopeExcess.get() <= 0.001,
+                            "Native traction's speed envelope must not exceed the curve's radius-based limit while on it");
                     source.stopGeneration();
                     source.removeOwnedTickets();
                     helper.succeed();
@@ -426,12 +479,12 @@ public final class MaglevGameTests implements FabricGameTest {
             if (completed.get()) return;
             guarded(helper, completed, () -> {
                 if (!started.get()) {
-                    if (source.substation().energyStored() != TractionSubstationBlockEntity.CAPACITY) return;
+                    if (source.substation().energyStored() != MaglevConfig.substationCapacity()) return;
                     helper.assertTrue(source.hasLiveCopperWire(), "The one native generator must fill the shared substation before isolation");
                     source.stopGeneration();
                     source.disconnect();
                     helper.assertTrue(!source.hasLiveCopperWire(), "The real NewAge wire must be detached before shared-train debit is measured");
-                    helper.assertTrue(source.substation().energyStored() == TractionSubstationBlockEntity.CAPACITY,
+                    helper.assertTrue(source.substation().energyStored() == MaglevConfig.substationCapacity(),
                             "The shared substation must begin with its naturally observed full buffer");
 
                     Train electricTrain = electricBuilt.assemble();
@@ -514,9 +567,9 @@ public final class MaglevGameTests implements FabricGameTest {
                     completed.set(true);
                     helper.assertTrue(observedBothPowered.get(), "The charged shared substation must initially power both native trains");
                     helper.assertTrue(observedInsufficientBuffer.get(), "Natural depletion must reach a buffer too small to power both consists");
-                    helper.assertTrue(totalExpectedDebit.get() == TractionSubstationBlockEntity.CAPACITY,
+                    helper.assertTrue(totalExpectedDebit.get() == MaglevConfig.substationCapacity(),
                             "Total powered bogey demand through natural exhaustion must exactly equal the initial capacity");
-                    helper.assertTrue(totalObservedDebit.get() == TractionSubstationBlockEntity.CAPACITY,
+                    helper.assertTrue(totalObservedDebit.get() == MaglevConfig.substationCapacity(),
                             "Measured native traction debit through natural exhaustion must exactly equal the initial capacity");
                     helper.assertTrue(source.substation().energyStored() == 0,
                             "Both stationary trains must naturally exhaust, not setter-drain, the shared charge");
@@ -527,6 +580,211 @@ public final class MaglevGameTests implements FabricGameTest {
         });
         helper.runAtTickTime(800, () -> {
             if (!completed.get()) helper.fail("Two native station-assembled consists did not consume the isolated shared buffer to exact exhaustion");
+        });
+    }
+
+    @GameTest(template = "create_maglev_tests:arena", batch = SUPPLY_BATCH, timeoutTicks = 1000, attempts = 1)
+    public void scheduledTrainKeepsTractionAfterItsChunksUnload(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos origin = isolatedOrigin(helper, 6);
+        NativeTrainFixture.BuiltTrain built = NativeTrainFixture.build(level, origin, AllBlocks.TRACK.get(),
+                TrackMaterial.ANDESITE, "gametest-unloaded", MaglevContent.ELECTRIC_BOGEY, false);
+        // The start supply covers only the station end; the remote supply alone covers the middle and destination.
+        // Both lie beyond every query the parked train makes (pickups plus its short standstill look-ahead), so
+        // their chunks genuinely unload; the coverage spheres still overlap around z+24..z+34.
+        BlockPos startSupply = origin.offset(4, 0, -30);
+        BlockPos remoteSupply = origin.offset(4, 0, 88);
+        List<BlockPos> substations = List.of(startSupply, remoteSupply);
+        long[] charged = new long[substations.size()];
+        for (int i = 0; i < substations.size(); i++) {
+            BlockPos pos = substations.get(i);
+            level.setBlock(pos.below(), Blocks.STONE.defaultBlockState(), 3);
+            level.setBlock(pos, TractionPower.SUBSTATION.defaultBlockState(), 3);
+            charged[i] = chargeThroughEnergyApi(level, pos, TEST_CHARGE);
+        }
+        AtomicReference<UUID> trainId = new AtomicReference<>();
+        AtomicReference<GlobalStation> destination = new AtomicReference<>();
+        AtomicBoolean scheduled = new AtomicBoolean();
+        AtomicBoolean completed = new AtomicBoolean();
+        AtomicBoolean poweredWhileUnloaded = new AtomicBoolean();
+        AtomicInteger conductorWaitTicks = new AtomicInteger();
+
+        helper.runAtTickTime(20, () -> guarded(helper, completed, () -> {
+            for (long stored : charged) {
+                helper.assertTrue(stored == TEST_CHARGE, "Each substation must accept charge through the public energy API");
+            }
+            Train assembled = built.assemble();
+            requireRegisteredTrain(assembled.id, assembled);
+            trainId.set(assembled.id);
+            destination.set(built.destinationStation.getStation());
+            helper.assertTrue(destination.get() != null, "The destination must be a native graph station before unloading");
+        }));
+        helper.onEachTick(() -> {
+            if (trainId.get() == null || completed.get()) return;
+            guarded(helper, completed, () -> {
+                Train train = requireRegisteredTrain(trainId.get(), null);
+                boolean remoteUnloaded = !chunkLoaded(level, built.leadingBogeyPos) && !chunkLoaded(level, built.destinationRailPos)
+                        && !chunkLoaded(level, remoteSupply);
+                if (!scheduled.get()) {
+                    // Create learns a carriage's conductors only from its loaded entity; navigation needs them.
+                    if (!train.hasForwardConductor() && !train.hasBackwardConductor()) {
+                        if (conductorWaitTicks.incrementAndGet() > 60) {
+                            throw new AssertionError("Create never registered the assembled train's conductors");
+                        }
+                        return;
+                    }
+                    // Depart as an unattended train: nothing keeps the route or substation chunks loaded from now on.
+                    scheduleByName(train, built.destinationName);
+                    built.releaseRecordingTickets();
+                    scheduled.set(true);
+                    return;
+                }
+                TrainTraction traction = ((TractionState) train).maglev$traction();
+                double frontZ = Math.max(train.carriages.get(0).getLeadingPoint().getPosition(train.graph).z,
+                        train.carriages.get(0).getTrailingPoint().getPosition(train.graph).z);
+                // Beyond the start supply's 64-block sphere only the unloaded remote substation covers the route.
+                if (remoteUnloaded && traction.powered() && frontZ > startSupply.getZ() + 70) poweredWhileUnloaded.set(true);
+                if (train.getCurrentStation() == destination.get() && train.navigation.destination == null
+                        && Math.abs(train.speed) < 0.001) {
+                    completed.set(true);
+                    helper.assertTrue(poweredWhileUnloaded.get(),
+                            "A substation in an unloaded chunk must keep supplying a train running through unloaded chunks");
+                    helper.assertTrue(!chunkLoaded(level, remoteSupply),
+                            "The remote supplying substation must still be unloaded when the train arrives");
+                    helper.assertTrue(TractionPower.storedEnergy(level, remoteSupply) < TEST_CHARGE,
+                            "The unloaded remote substation's persistent charge must pay for the trip it powered");
+                    helper.succeed();
+                }
+            });
+        });
+        helper.runAtTickTime(950, () -> {
+            if (completed.get()) return;
+            Train train = trainId.get() == null ? null : Create.RAILWAYS.trains.get(trainId.get());
+            String state = "no train";
+            if (train != null) {
+                TrainTraction traction = ((TractionState) train).maglev$traction();
+                state = "scheduled=" + scheduled.get() + " speed=" + train.speed + " target=" + train.targetSpeed
+                        + " frontZ-origin=" + (train.carriages.get(0).getTrailingPoint().getPosition(train.graph).z - origin.getZ())
+                        + " navigating=" + (train.navigation.destination != null) + " station=" + train.getCurrentStation()
+                        + " powered=" + traction.powered() + " status=" + traction.status()
+                        + " speedLimit=" + traction.speedLimit() + " powerLimit=" + traction.powerLimit()
+                        + " startEnergy=" + TractionPower.storedEnergy(level, startSupply)
+                        + " remoteEnergy=" + TractionPower.storedEnergy(level, remoteSupply)
+                        + " startLoaded=" + chunkLoaded(level, startSupply) + " remoteLoaded=" + chunkLoaded(level, remoteSupply);
+            }
+            helper.fail("A scheduled electric train stopped where its only supply was a substation in an unloaded chunk: " + state);
+        });
+    }
+
+    @GameTest(template = "create_maglev_tests:arena", batch = SUPPLY_BATCH, timeoutTicks = 700, attempts = 1)
+    public void chargedSubstationPowersTrainWhenNearestSubstationIsEmpty(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos origin = isolatedOrigin(helper, 7);
+        NativeTrainFixture.BuiltTrain built = NativeTrainFixture.build(level, origin, AllBlocks.TRACK.get(),
+                TrackMaterial.ANDESITE, "gametest-shadowed", MaglevContent.ELECTRIC_BOGEY, false);
+        BlockPos empty = origin.offset(-3, 0, 7);
+        BlockPos charged = origin.offset(-3, 0, 40);
+        for (BlockPos pos : List.of(empty, charged)) {
+            level.setBlock(pos.below(), Blocks.STONE.defaultBlockState(), 3);
+            level.setBlock(pos, TractionPower.SUBSTATION.defaultBlockState(), 3);
+        }
+        long stored = chargeThroughEnergyApi(level, charged, TEST_CHARGE);
+        AtomicReference<UUID> trainId = new AtomicReference<>();
+        AtomicBoolean completed = new AtomicBoolean();
+        AtomicBoolean sawPower = new AtomicBoolean();
+
+        helper.runAtTickTime(20, () -> guarded(helper, completed, () -> {
+            helper.assertTrue(stored == TEST_CHARGE, "The farther substation must accept charge through the public energy API");
+            helper.assertTrue(storedEnergy(level, empty) == 0, "The nearest substation must start empty");
+            Train assembled = built.assemble();
+            requireRegisteredTrain(assembled.id, assembled);
+            trainId.set(assembled.id);
+            built.scheduleToDestination();
+        }));
+        helper.onEachTick(() -> {
+            if (trainId.get() == null || completed.get()) return;
+            guarded(helper, completed, () -> {
+                Train train = requireRegisteredTrain(trainId.get(), null);
+                if (((TractionState) train).maglev$traction().powered()) sawPower.set(true);
+                if (train.getCurrentStation() == built.destinationStation.getStation() && train.navigation.destination == null
+                        && Math.abs(train.speed) < 0.001) {
+                    completed.set(true);
+                    helper.assertTrue(sawPower.get(), "A charged substation in range must power the train");
+                    helper.assertTrue(storedEnergy(level, empty) == 0, "The empty substation cannot have supplied energy");
+                    helper.assertTrue(storedEnergy(level, charged) < TEST_CHARGE, "The charged substation must supply the trip");
+                    helper.succeed();
+                }
+            });
+        });
+        helper.runAtTickTime(650, () -> {
+            if (!completed.get()) helper.fail("An empty nearest substation blocked a charged substation that also covers the train");
+        });
+    }
+
+    @BeforeBatch(batch = WEAK_SUPPLY_BATCH)
+    public static void rateSubstationsWeakly(ServerLevel level) {
+        MaglevConfig.SUBSTATION_OUTPUT.set(WEAK_SUPPLY_OUTPUT);
+    }
+
+    @AfterBatch(batch = WEAK_SUPPLY_BATCH)
+    public static void restoreSubstationRating(ServerLevel level) {
+        MaglevConfig.SUBSTATION_OUTPUT.set(MaglevConfig.SUBSTATION_OUTPUT.getDefault());
+    }
+
+    @GameTest(template = "create_maglev_tests:arena", batch = WEAK_SUPPLY_BATCH, timeoutTicks = 1200, attempts = 1)
+    public void weakSubstationOutputCapsSpeedInsteadOfStoppingTheTrain(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos origin = isolatedOrigin(helper, 11);
+        NativeTrainFixture.BuiltTrain built = NativeTrainFixture.build(level, origin, AllBlocks.TRACK.get(),
+                TrackMaterial.ANDESITE, "gametest-weak-supply", MaglevContent.ELECTRIC_BOGEY, false);
+        BlockPos substation = origin.offset(4, 0, 48);
+        level.setBlock(substation.below(), Blocks.STONE.defaultBlockState(), 3);
+        level.setBlock(substation, TractionPower.SUBSTATION.defaultBlockState(), 3);
+        long stored = chargeThroughEnergyApi(level, substation, TEST_CHARGE);
+        // Two electric bogeys idle at 2 * idleEnergy; whatever the rating leaves over pays the speed-squared term.
+        double sustainable = Math.sqrt((WEAK_SUPPLY_OUTPUT - 2.0 * TrainTier.ELECTRIC.idleEnergy())
+                / (2.0 * TrainTier.ELECTRIC.speedEnergyCoefficient()));
+        AtomicReference<UUID> trainId = new AtomicReference<>();
+        AtomicBoolean completed = new AtomicBoolean();
+        AtomicBoolean sawWeakSupply = new AtomicBoolean();
+        AtomicLong previousCharge = new AtomicLong(-1);
+        AtomicLong largestDebit = new AtomicLong();
+        AtomicReference<Double> maxSpeed = new AtomicReference<>(0d);
+
+        helper.runAtTickTime(20, () -> guarded(helper, completed, () -> {
+            helper.assertTrue(stored == TEST_CHARGE, "The weak substation must accept charge through the public energy API");
+            helper.assertTrue(MaglevConfig.substationOutput() == WEAK_SUPPLY_OUTPUT, "The batch must rate substations weakly");
+            Train assembled = built.assemble();
+            requireRegisteredTrain(assembled.id, assembled);
+            trainId.set(assembled.id);
+            built.scheduleToDestination();
+        }));
+        helper.onEachTick(() -> {
+            if (trainId.get() == null || completed.get()) return;
+            guarded(helper, completed, () -> {
+                Train train = requireRegisteredTrain(trainId.get(), null);
+                TrainTraction traction = ((TractionState) train).maglev$traction();
+                long charge = TractionPower.storedEnergy(level, substation);
+                if (previousCharge.get() >= 0) largestDebit.set(Math.max(largestDebit.get(), previousCharge.get() - charge));
+                previousCharge.set(charge);
+                maxSpeed.set(Math.max(maxSpeed.get(), Math.abs(train.speed)));
+                if (traction.powered() && traction.powerFraction() < 1) sawWeakSupply.set(true);
+                if (train.getCurrentStation() == built.destinationStation.getStation() && train.navigation.destination == null
+                        && Math.abs(train.speed) < 0.001) {
+                    completed.set(true);
+                    helper.assertTrue(largestDebit.get() <= WEAK_SUPPLY_OUTPUT,
+                            "A substation delivered " + largestDebit.get() + " in one tick, above its rated " + WEAK_SUPPLY_OUTPUT);
+                    helper.assertTrue(sawWeakSupply.get(), "Traction must report a partial supply under the weak rating");
+                    helper.assertTrue(maxSpeed.get() <= sustainable + 0.02,
+                            "Weak supply must cap speed at the sustainable " + sustainable + ", saw " + maxSpeed.get());
+                    helper.assertTrue(maxSpeed.get() >= 0.8 * sustainable,
+                            "Weak supply must still run the train near " + sustainable + ", saw " + maxSpeed.get());
+                    helper.succeed();
+                }
+            });
+        });
+        helper.runAtTickTime(1150, () -> {
+            if (!completed.get()) helper.fail("A train on a weakly rated substation stopped instead of running at reduced speed");
         });
     }
 
@@ -572,6 +830,10 @@ public final class MaglevGameTests implements FabricGameTest {
         return point.edge != null && point.edge.isTurn();
     }
 
+    private static double curveLimitAt(TravellingPoint point) {
+        return isTurn(point) ? TrainTraction.curveSpeedLimit(point.edge.getTurn()) : Double.POSITIVE_INFINITY;
+    }
+
     private static long stationaryPoweredBogeyDemand(Train train, TrainTier expectedTier) {
         long demand = 0;
         for (Carriage carriage : train.carriages) {
@@ -596,5 +858,38 @@ public final class MaglevGameTests implements FabricGameTest {
             if (completed != null) completed.set(true);
             helper.fail(error.getClass().getSimpleName() + ": " + error.getMessage());
         }
+    }
+
+    private static long chargeThroughEnergyApi(ServerLevel level, BlockPos pos, long amount) {
+        EnergyStorage storage = EnergyStorage.findForBlock(level, pos, Direction.UP);
+        if (storage == null) throw new AssertionError("No public energy storage at substation " + pos);
+        try (Transaction transaction = TransactionStack.get().openOuter()) {
+            long inserted = storage.insert(amount, transaction);
+            transaction.commit();
+            return inserted;
+        }
+    }
+
+    private static long storedEnergy(ServerLevel level, BlockPos pos) {
+        EnergyStorage storage = EnergyStorage.findForBlock(level, pos, Direction.UP);
+        if (storage == null) throw new AssertionError("No public energy storage at substation " + pos);
+        return storage.getStoredEnergy();
+    }
+
+    private static boolean chunkLoaded(ServerLevel level, BlockPos pos) {
+        return level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4) != null;
+    }
+
+    /** Name-based native schedule; the destination station block entity may be unloaded. */
+    private static void scheduleByName(Train train, String stationName) {
+        Schedule schedule = new Schedule();
+        ScheduleEntry entry = new ScheduleEntry();
+        DestinationInstruction instruction = new DestinationInstruction();
+        CompoundTag data = instruction.getData().copy();
+        data.putString("Text", stationName);
+        instruction.setData(data);
+        entry.instruction = instruction;
+        schedule.entries.add(entry);
+        train.runtime.setSchedule(schedule, true);
     }
 }

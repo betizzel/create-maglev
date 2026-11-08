@@ -42,8 +42,8 @@ public abstract class CarriageLevitationMixin extends OrientedContraptionEntity 
         CarriageContraptionEntity entity = (CarriageContraptionEntity) (Object) this;
         if (player.level().isClientSide || entity.getCarriage() == null || player.tickCount % 20 != 0) return;
         var traction = ((TractionState) entity.getCarriage().train).maglev$traction();
-        if (traction.managed() && !traction.powered()) {
-            player.displayClientMessage(Component.translatable("message.create_maglev." + traction.status()), true);
+        if (traction.managed() && !traction.status().equals("powered")) {
+            player.displayClientMessage(traction.statusMessage(), true);
         }
     }
 }

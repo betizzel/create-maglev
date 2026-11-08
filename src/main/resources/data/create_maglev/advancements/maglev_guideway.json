@@ -1,0 +1,27 @@
+{
+  "parent": "create_maglev:maglev_bogey",
+  "display": {
+    "icon": {
+      "item": "create_maglev:maglev_track"
+    },
+    "title": {
+      "translate": "advancements.create_maglev.maglev_guideway.title"
+    },
+    "description": {
+      "translate": "advancements.create_maglev.maglev_guideway.description"
+    },
+    "frame": "goal"
+  },
+  "criteria": {
+    "acquired_maglev_guideway": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": ["create_maglev:maglev_track"]
+          }
+        ]
+      }
+    }
+  }
+}

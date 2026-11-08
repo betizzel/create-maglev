@@ -3,7 +3,7 @@
   "category": "building",
   "key": {
     "B": {"item": "create_new_age:carbon_brushes"},
-    "S": {"item": "create_maglev:steel_sheet"},
+    "S": {"tag": "c:steel_plates"},
     "W": {"item": "create_new_age:copper_wire"},
     "G": {"item": "create_new_age:generator_coil"},
     "C": {"item": "create_new_age:electrical_connector"}

@@ -1,0 +1,27 @@
+{
+  "parent": "create_maglev:steel_ingot",
+  "display": {
+    "icon": {
+      "item": "create_maglev:traction_substation"
+    },
+    "title": {
+      "translate": "advancements.create_maglev.traction_substation.title"
+    },
+    "description": {
+      "translate": "advancements.create_maglev.traction_substation.description"
+    },
+    "frame": "goal"
+  },
+  "criteria": {
+    "acquired_traction_substation": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": ["create_maglev:traction_substation"]
+          }
+        ]
+      }
+    }
+  }
+}

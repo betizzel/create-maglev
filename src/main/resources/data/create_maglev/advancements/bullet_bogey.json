@@ -1,0 +1,27 @@
+{
+  "parent": "create_maglev:electric_bogey",
+  "display": {
+    "icon": {
+      "item": "create_maglev:bullet_bogey"
+    },
+    "title": {
+      "translate": "advancements.create_maglev.bullet_bogey.title"
+    },
+    "description": {
+      "translate": "advancements.create_maglev.bullet_bogey.description"
+    },
+    "frame": "goal"
+  },
+  "criteria": {
+    "acquired_bullet_bogey": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": ["create_maglev:bullet_bogey"]
+          }
+        ]
+      }
+    }
+  }
+}

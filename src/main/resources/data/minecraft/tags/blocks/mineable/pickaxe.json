@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "create_maglev:traction_substation",
+    "create_maglev:electric_bogey",
+    "create_maglev:bullet_bogey",
+    "create_maglev:maglev_bogey",
+    "create_maglev:reinforced_track",
+    "create_maglev:maglev_track"
+  ]
+}

@@ -1,89 +1,97 @@
 package dev.createmaglev.power;
 
+import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
+import dev.createmaglev.config.MaglevConfig;
+import java.util.List;
+import javax.annotation.Nullable;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.antarcticgardens.esl.energy.EnergyStorage;
 import org.antarcticgardens.esl.transaction.SnapshotParticipant;
-import org.antarcticgardens.esl.transaction.Transaction;
 import org.antarcticgardens.esl.transaction.TransactionContext;
-import org.antarcticgardens.esl.transaction.TransactionStack;
 
-public final class TractionSubstationBlockEntity extends BlockEntity {
-    public static final long CAPACITY = 8192L;
+/** In-world view of a {@link SubstationNetwork} entry: New Age charging, comparator, client sync and goggles. */
+public final class TractionSubstationBlockEntity extends BlockEntity implements IHaveGoggleInformation {
     private static final String ENERGY_TAG = "Energy";
+    private static final int CLIENT_SYNC_INTERVAL = 10;
 
-    private long energyStored;
-    private int lastComparatorSignal;
+    /** Charge read from NBT before the server level is known; the network decides whether it applies. */
+    private long savedEnergy = -1;
+    private long clientEnergy;
+    private int lastComparatorSignal = -1;
+    private boolean clientSyncPending;
+    private long lastClientSync = Long.MIN_VALUE;
     private final EslEnergyStorage energyStorage = new EslEnergyStorage();
 
     public TractionSubstationBlockEntity(BlockPos pos, BlockState state) {
         super(TractionPower.SUBSTATION_BLOCK_ENTITY, pos, state);
     }
 
+    /** The authoritative network charge on the server; the last synchronized charge on clients. */
     public long energyStored() {
-        return energyStored;
-    }
-
-    public boolean consume(long amount) {
-        if (amount < 0 || !(level instanceof ServerLevel serverLevel)) {
-            return false;
+        if (level instanceof ServerLevel) {
+            SubstationNetwork.Substation substation = entry();
+            return substation == null ? 0L : substation.energy();
         }
-        if (!serverLevel.getServer().isSameThread()) {
-            throw new IllegalStateException("Traction-substation energy must be consumed on the server thread");
-        }
-        try (Transaction transaction = TransactionStack.get().openOuter()) {
-            if (!consume(amount, transaction)) {
-                return false;
-            }
-            transaction.commit();
-            return true;
-        }
-    }
-
-    public boolean consume(long amount, TransactionContext transaction) {
-        if (amount < 0 || transaction == null || !(level instanceof ServerLevel serverLevel)) {
-            return false;
-        }
-        if (!serverLevel.getServer().isSameThread()) {
-            throw new IllegalStateException("Traction-substation energy must be consumed on the server thread");
-        }
-        return energyStorage.consume(amount, transaction);
+        return clientEnergy;
     }
 
     EnergyStorage energyStorageFor(Direction direction) {
         return energyStorage;
     }
 
-    boolean canSupply() {
-        return !isRemoved() && level instanceof ServerLevel serverLevel
-                && serverLevel.hasChunkAt(worldPosition)
-                && serverLevel.getBlockState(worldPosition).getBlock() == TractionPower.SUBSTATION
-                && !serverLevel.hasNeighborSignal(worldPosition);
+    @Nullable
+    private SubstationNetwork.Substation entry() {
+        return level instanceof ServerLevel server ? SubstationNetwork.get(server).get(worldPosition) : null;
+    }
+
+    @Override
+    public void setLevel(Level level) {
+        super.setLevel(level);
+        if (level instanceof ServerLevel server) {
+            // Chunk promotion may still be in progress: use only this block entity's own state, never neighbours.
+            SubstationNetwork.get(server).attach(this, savedEnergy, getBlockState().getValue(TractionSubstationBlock.POWERED));
+        } else if (savedEnergy >= 0) {
+            clientEnergy = savedEnergy;
+        }
+        savedEnergy = -1;
     }
 
     @Override
     public void setRemoved() {
-        TractionPower.untrack(this);
+        if (level instanceof ServerLevel server) {
+            SubstationNetwork.get(server).detach(this);
+        }
         super.setRemoved();
     }
 
     @Override
     protected void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
-        tag.putLong(ENERGY_TAG, energyStored);
+        // Mirrors the network so contraptions and 1.0.x-style readers carry the charge with the block.
+        tag.putLong(ENERGY_TAG, energyStored());
     }
 
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
-        energyStored = Math.max(0L, Math.min(CAPACITY, tag.getLong(ENERGY_TAG)));
-        lastComparatorSignal = comparatorSignal(energyStored);
+        long energy = Math.max(0L, tag.getLong(ENERGY_TAG));
+        if (level == null) {
+            savedEnergy = energy;
+        } else if (level instanceof ServerLevel server) {
+            SubstationNetwork.get(server).restoreEnergy(this, energy);
+        } else {
+            clientEnergy = energy;
+        }
     }
 
     @Override
@@ -91,69 +99,88 @@ public final class TractionSubstationBlockEntity extends BlockEntity {
         return saveWithoutMetadata();
     }
 
-
     @Override
     public ClientboundBlockEntityDataPacket getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
     }
 
-    private void energyChanged() {
-        setChanged();
-        if (level == null || level.isClientSide) {
-            return;
+    /** Called by the network whenever this substation's charge changes, including train draws. */
+    void onEnergyChanged() {
+        if (level != null) {
+            level.blockEntityChanged(worldPosition);
         }
-        BlockState state = getBlockState();
-        level.sendBlockUpdated(worldPosition, state, state, Block.UPDATE_CLIENTS);
-        int signal = comparatorSignal(energyStored);
-        if (signal != lastComparatorSignal) {
-            lastComparatorSignal = signal;
-            level.updateNeighbourForOutputSignal(worldPosition, state.getBlock());
+        clientSyncPending = true;
+    }
+
+    int comparatorSignal() {
+        long capacity = MaglevConfig.substationCapacity();
+        return capacity <= 0 ? 0 : (int) Math.min(15L, energyStored() * 15L / capacity);
+    }
+
+    static void serverTick(Level level, BlockPos pos, BlockState state, TractionSubstationBlockEntity substation) {
+        SubstationNetwork.Substation entry = substation.entry();
+        if (entry != null) {
+            // The block state is authoritative while loaded, however the property was changed.
+            entry.setBreakerOpen(state.getValue(TractionSubstationBlock.POWERED));
+        }
+        // Also refreshes comparators after charge was drawn while this chunk was unloaded.
+        int signal = substation.comparatorSignal();
+        if (signal != substation.lastComparatorSignal) {
+            substation.lastComparatorSignal = signal;
+            level.updateNeighbourForOutputSignal(pos, state.getBlock());
+        }
+        long now = level.getGameTime();
+        if (substation.clientSyncPending && now - substation.lastClientSync >= CLIENT_SYNC_INTERVAL) {
+            substation.clientSyncPending = false;
+            substation.lastClientSync = now;
+            level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS);
         }
     }
 
-    private static int comparatorSignal(long energy) {
-        return (int) (energy * 15L / CAPACITY);
+    @Override
+    public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
+        boolean breakerOpen = getBlockState().getValue(TractionSubstationBlock.POWERED);
+        tooltip.add(Component.literal("    ").append(Component.translatable("create_maglev.goggles.substation")));
+        tooltip.add(Component.literal("     ").append(Component.translatable("create_maglev.goggles.substation.stored",
+                energyStored(), MaglevConfig.substationCapacity()).withStyle(ChatFormatting.GRAY)));
+        tooltip.add(Component.literal("     ").append(Component.translatable(breakerOpen
+                        ? "create_maglev.goggles.substation.breaker_open" : "create_maglev.goggles.substation.breaker_closed")
+                .withStyle(breakerOpen ? ChatFormatting.RED : ChatFormatting.GREEN)));
+        tooltip.add(Component.literal("     ").append(Component.translatable("create_maglev.goggles.substation.output",
+                MaglevConfig.substationOutput()).withStyle(ChatFormatting.GRAY)));
+        tooltip.add(Component.literal("     ").append(Component.translatable("create_maglev.goggles.substation.radius",
+                MaglevConfig.supplyRadius()).withStyle(ChatFormatting.GRAY)));
+        return true;
     }
 
     private final class EslEnergyStorage extends SnapshotParticipant<Long> implements EnergyStorage {
         @Override
         public Long createSnapshot() {
-            return energyStored;
+            return energyStored();
         }
 
         @Override
         public void restoreSnapshot(Long snapshot) {
-            energyStored = snapshot;
-        }
-
-        @Override
-        protected void onFinalCommit() {
-            energyChanged();
+            SubstationNetwork.Substation substation = entry();
+            if (substation != null) {
+                substation.setEnergy(snapshot);
+            }
         }
 
         @Override
         public long insert(long amount, TransactionContext transaction) {
-            if (amount <= 0L || transaction == null || !canSupply()) {
+            SubstationNetwork.Substation substation = entry();
+            // An open traction breaker isolates the substation from charging as well as from trains.
+            if (amount <= 0L || transaction == null || substation == null || substation.breakerOpen()) {
                 return 0L;
             }
-            long accepted = Math.min(amount, CAPACITY - energyStored);
+            long accepted = Math.min(amount, MaglevConfig.substationCapacity() - substation.energy());
             if (accepted <= 0L) {
                 return 0L;
             }
             updateSnapshots(transaction);
-            energyStored += accepted;
+            substation.setEnergy(substation.energy() + accepted);
             return accepted;
-        }
-
-        boolean consume(long amount, TransactionContext transaction) {
-            if (amount < 0L || transaction == null || !canSupply() || energyStored < amount) {
-                return false;
-            }
-            if (amount != 0L) {
-                updateSnapshots(transaction);
-                energyStored -= amount;
-            }
-            return true;
         }
 
         @Override
@@ -163,12 +190,12 @@ public final class TractionSubstationBlockEntity extends BlockEntity {
 
         @Override
         public long getStoredEnergy() {
-            return energyStored;
+            return energyStored();
         }
 
         @Override
         public long getCapacity() {
-            return CAPACITY;
+            return MaglevConfig.substationCapacity();
         }
 
         @Override
@@ -178,7 +205,8 @@ public final class TractionSubstationBlockEntity extends BlockEntity {
 
         @Override
         public boolean supportsInsertion() {
-            return canSupply();
+            SubstationNetwork.Substation substation = entry();
+            return substation != null && !substation.breakerOpen();
         }
     }
 }

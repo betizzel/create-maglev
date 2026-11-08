@@ -1,0 +1,22 @@
+{
+  "display": {
+    "icon": {
+      "item": "create_maglev:maglev_bogey"
+    },
+    "title": {
+      "translate": "advancements.create_maglev.root.title"
+    },
+    "description": {
+      "translate": "advancements.create_maglev.root.description"
+    },
+    "background": "minecraft:textures/gui/advancements/backgrounds/stone.png",
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false
+  },
+  "criteria": {
+    "entered_world": {
+      "trigger": "minecraft:tick"
+    }
+  }
+}

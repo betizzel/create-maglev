@@ -61,7 +61,9 @@ public abstract class TrainMixin implements TractionState {
 
     @Inject(method = "maxTurnSpeed", at = @At("HEAD"), cancellable = true)
     private void create_maglev$curveSpeed(CallbackInfoReturnable<Float> cir) {
-        if (maglev$traction().managed()) cir.setReturnValue(1.0f);
+        TrainTraction traction = maglev$traction();
+        // Navigation applies one turn speed to every curve; traction limits each curve by its radius instead.
+        if (traction.managed()) cir.setReturnValue((float) traction.tier().topSpeed());
     }
 
     @Inject(method = "acceleration", at = @At("HEAD"), cancellable = true)

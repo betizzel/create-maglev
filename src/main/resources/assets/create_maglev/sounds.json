@@ -1,0 +1,12 @@
+{
+  "maglev_hum": {
+    "subtitle": "subtitles.create_maglev.maglev_hum",
+    "sounds": [
+      {
+        "name": "minecraft:block/beacon/ambient",
+        "volume": 0.25,
+        "pitch": 0.8
+      }
+    ]
+  }
+}

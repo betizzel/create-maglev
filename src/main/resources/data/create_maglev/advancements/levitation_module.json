@@ -1,0 +1,27 @@
+{
+  "parent": "create_maglev:bullet_bogey",
+  "display": {
+    "icon": {
+      "item": "create_maglev:levitation_module"
+    },
+    "title": {
+      "translate": "advancements.create_maglev.levitation_module.title"
+    },
+    "description": {
+      "translate": "advancements.create_maglev.levitation_module.description"
+    },
+    "frame": "task"
+  },
+  "criteria": {
+    "acquired_levitation_module": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": ["create_maglev:levitation_module"]
+          }
+        ]
+      }
+    }
+  }
+}

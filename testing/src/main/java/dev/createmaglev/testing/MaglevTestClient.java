@@ -57,6 +57,11 @@ public final class MaglevTestClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        if (PonderShotClient.registerIfRequested()) return;
+        if (Boolean.getBoolean("createmaglev.tests.walkthrough")) {
+            NativePassengerWalkthroughClient.register();
+            return;
+        }
         if (!Boolean.getBoolean("createmaglev.tests.recorded")) return;
         String control = System.getProperty("createmaglev.tests.controlDir");
         if (!"1".equals(System.getenv("MAGLEV_RECORDED_XVFB")) || control == null || !Files.isDirectory(Path.of(control))) {

@@ -11,7 +11,8 @@
     "fabric-gametest": [
       "dev.createmaglev.testing.NativeCreateBatchSetup",
       "dev.createmaglev.testing.MaglevGameTests",
-      "dev.createmaglev.testing.NativeEnergisingTests"
+      "dev.createmaglev.testing.NativeEnergisingTests",
+      "dev.createmaglev.testing.NativeSpeedEnvelopeTests"
     ]
   },
   "depends": {
