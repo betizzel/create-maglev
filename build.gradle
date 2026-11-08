@@ -4,6 +4,7 @@ import java.security.MessageDigest
 plugins {
     id 'fabric-loom' version '1.12.7'
     id 'maven-publish'
+    id 'me.modmuss50.mod-publish-plugin' version '2.2.1'
 }
 
 allprojects {
@@ -101,5 +102,32 @@ tasks.register('packageRuntime', Sync) {
         new File(directory, 'manifest.json').text = JsonOutput.prettyPrint(JsonOutput.toJson([
             runtime: [minecraft: minecraft_version, loader: 'fabric', loaderVersion: fabric_loader_version], mods: mods
         ])) + '\n'
+    }
+}
+
+// `./build.sh publishMods` uploads the release JAR to Modrinth. The token comes only from the MODRINTH_TOKEN
+// environment variable; without it, this is a dry run that writes what it would upload under the build
+// directory. The changelog is this version's README section.
+def releaseChangelog = providers.fileContents(layout.projectDirectory.file('README.md')).asText.map { String readme ->
+    String release = project.version.toString().split('\\+')[0]
+    def section = readme =~ /(?ms)^### ${java.util.regex.Pattern.quote(release)}:[^\n]*\n(.*?)(?=^### |^## |\z)/
+    if (!section.find()) throw new GradleException("README.md has no changelog section for ${release}")
+    section.group(1).trim()
+}
+
+publishMods {
+    file = tasks.named('remapJar').flatMap { it.archiveFile }
+    changelog = releaseChangelog
+    type = STABLE
+    displayName = "Create: Maglev ${project.version}"
+    modLoaders.add('fabric')
+    dryRun = providers.environmentVariable('MODRINTH_TOKEN').orNull == null
+
+    modrinth {
+        accessToken = providers.environmentVariable('MODRINTH_TOKEN')
+        projectId = providers.gradleProperty('modrinth_project_id')
+        minecraftVersions.add(minecraft_version)
+        environment = CLIENT_AND_SERVER
+        requires('create-fabric', 'create-new-age', 'fabric-api', 'forge-config-api-port')
     }
 }
